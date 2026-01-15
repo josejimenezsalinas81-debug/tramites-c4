@@ -905,7 +905,7 @@ initDB().then(() => {
     console.log('║                                                            ║');
     console.log('║   👤 Usuarios superadmin:                                  ║');
     console.log('║      1. superadmin@empresa.com / 1234                      ║');
-    console.log('║      2. josejimenezsalinas81@gmail.com                     ║');
+    console.log('║      2. josejimenezsalinas81@gmail.com / 1234                     ║');
     console.log('╚════════════════════════════════════════════════════════════╝');
     console.log('');
   });
