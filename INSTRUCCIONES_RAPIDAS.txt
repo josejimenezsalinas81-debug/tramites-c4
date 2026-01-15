@@ -1,0 +1,87 @@
+╔════════════════════════════════════════════════════════════════════╗
+║                                                                    ║
+║   🚀 GUÍA RÁPIDA - DESPLIEGUE EN 5 MINUTOS                       ║
+║                                                                    ║
+╚════════════════════════════════════════════════════════════════════╝
+
+PASO 1: CREAR CUENTA EN GITHUB
+─────────────────────────────────
+1. Ve a: https://github.com
+2. Click "Sign up" y crea tu cuenta
+3. Confirma tu email
+
+
+PASO 2: SUBIR EL CÓDIGO A GITHUB
+─────────────────────────────────
+1. En GitHub, click el botón "+" (arriba derecha)
+2. Selecciona "New repository"
+3. Nombre: tramites-c4
+4. Deja "Public" seleccionado
+5. Click "Create repository"
+
+6. Arrastra TODOS los archivos de esta carpeta al navegador
+   (donde dice "Drag files here")
+7. Click "Commit changes"
+
+
+PASO 3: CREAR CUENTA EN RENDER
+─────────────────────────────────
+1. Ve a: https://render.com
+2. Click "Get Started for Free"
+3. Selecciona "GitHub" para registrarte
+4. Autoriza Render a acceder a tu GitHub
+
+
+PASO 4: CREAR BASE DE DATOS
+─────────────────────────────────
+1. En Render Dashboard, click "New +"
+2. Selecciona "PostgreSQL"
+3. Nombre: tramites-db
+4. Región: Oregon (o la más cercana)
+5. Plan: Free
+6. Click "Create Database"
+7. ESPERA a que diga "Available"
+8. Copia el "External Database URL" (lo necesitarás)
+
+
+PASO 5: CREAR EL SERVIDOR
+─────────────────────────────────
+1. Click "New +" → "Web Service"
+2. Conecta tu repositorio "tramites-c4"
+3. Configuración:
+   - Name: tramites-c4
+   - Runtime: Node
+   - Build Command: npm install
+   - Start Command: npm start
+   
+4. En "Environment Variables", click "Add Environment Variable"
+   Key: DATABASE_URL
+   Value: (pega la URL del paso 4)
+
+5. Click "Create Web Service"
+6. ESPERA 2-3 minutos mientras se construye
+
+
+PASO 6: ¡LISTO! 🎉
+─────────────────────────────────
+Tu app estará en una URL como:
+https://tramites-c4.onrender.com
+
+Usuario: admin@empresa.com
+Contraseña: 1234
+
+
+════════════════════════════════════════════════════════════════════
+
+📱 INSTALAR EN CELULAR:
+
+iPhone: Safari → tu URL → Compartir → "Agregar a inicio"
+Android: Chrome → tu URL → Menú → "Instalar app"
+
+════════════════════════════════════════════════════════════════════
+
+⚠️  NOTA: El plan gratuito de Render "duerme" el servidor después
+    de 15 minutos sin uso. Al volver a entrar tarda ~30 seg en
+    despertar. Para evitar esto, el plan Starter cuesta $7/mes.
+
+════════════════════════════════════════════════════════════════════

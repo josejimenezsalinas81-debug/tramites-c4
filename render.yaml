@@ -1,0 +1,35 @@
+# render.yaml - Configuración para despliegue en Render.com
+# 
+# INSTRUCCIONES:
+# 1. Sube este proyecto a GitHub
+# 2. Ve a render.com y crea una cuenta gratis
+# 3. Click en "New" -> "Blueprint"
+# 4. Conecta tu repositorio de GitHub
+# 5. Render creará automáticamente el servidor y la base de datos
+#
+# O manualmente:
+# 1. New -> Web Service (conecta el repo)
+# 2. New -> PostgreSQL (base de datos gratis)
+# 3. En el Web Service, agrega variable DATABASE_URL con el valor de PostgreSQL
+
+services:
+  - type: web
+    name: tramites-c4
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tramites-c4-db
+          property: connectionString
+
+databases:
+  - name: tramites-c4-db
+    plan: free
+    databaseName: tramites_c4
+    user: tramites_user

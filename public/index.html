@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1e3a8a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Trámites C4">
+  <title>Control de Trámites C4</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    input[type="range"] { -webkit-appearance: none; height: 8px; border-radius: 4px; background: #e5e7eb; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; }
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; background-size: 16px; }
+    .status-green { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+    .status-yellow { background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%); }
+    .status-red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .animate-pulse { animation: pulse 2s infinite; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="app"></div>
+
+  <script>
+    // ==================== DATOS ====================
+    const TRAMITES = [
+      { id: 1, nombre: "MEMORIA DESCRIPTIVA / ESTUDIO IMPACTO VIAL", requisitos: ["Predial vigente", "Documentos de Propiedad", "Identificación Oficial", "Constancia de situación Fiscal", "Memoria descriptiva del proyecto", "DWG del proyecto", "Acta constitutiva de la empresa", "Poder notarial"]},
+      { id: 2, nombre: "USO DE SUELO", requisitos: ["Predial vigente", "Documentos de Propiedad", "Croquis de localización detallado", "Fotografías del predio con sus colindancias", "Proyecto arquitectónico"]},
+      { id: 3, nombre: "INTEGRACIÓN VIAL", requisitos: ["Predial vigente", "Deslinde vigente", "Uso de suelo Favorable", "Fotografías del predio con colindancias", "Plano del Proyecto Vial", "Estudio de Impacto Vial"]},
+      { id: 4, nombre: "FACTIBILIDAD DE CESPT", requisitos: ["Poder simple", "Identificación Oficial", "Predial vigente", "Deslinde vigente", "Documentos de Propiedad"]},
+      { id: 5, nombre: "FACTIBILIDAD DE CFE", requisitos: ["Poder simple", "Identificación Oficial", "Predial vigente", "Deslinde vigente", "Documentos de Propiedad", "Carga estimada en KW"]},
+      { id: 6, nombre: "BOMBEROS", requisitos: ["Croquis de localización", "Predial vigente", "Uso de suelo Favorable", "Ubicación de hidrantes", "Proyecto en PDF"]},
+      { id: 7, nombre: "IMPACTO AMBIENTAL", requisitos: ["Documentos de Propiedad", "Predial vigente", "Deslinde vigente", "Croquis de localización", "Constancia de situación Fiscal", "Uso de suelo Favorable"]},
+      { id: 8, nombre: "MOVIMIENTO DE TIERRAS", requisitos: ["Uso de suelo Favorable", "Deslinde vigente", "Documentos de Propiedad", "Mecánica de suelos", "Carta responsiva del perito", "Programa de obra firmado"]},
+      { id: 9, nombre: "PLANO DEL SEMBRADO", requisitos: ["Licencia de construcción", "Proyecto aprobado", "Proyecto en DWG"]},
+      { id: 10, nombre: "C1", requisitos: ["Trámite 9 completado", "Licencia de construcción vigente", "Planos autorizados", "Uso de suelo Favorable", "Deslinde vigente"]},
+      { id: 11, nombre: "LICENCIA CON C-2", requisitos: ["Documentos de Propiedad", "Predial vigente", "Deslinde vigente", "Proyecto arquitectónico ejecutivo", "Memoria de cálculo", "Mecánica de suelos"]},
+      { id: 12, nombre: "EQUIPAMIENTO ESCOLAR", requisitos: ["Avalúo", "Sembrado autorizado"]},
+      { id: 13, nombre: "C-3", requisitos: ["Licencia con C2", "Certificado Fiscal", "Certificado Hipotecario", "Avalúo", "Memoria descriptiva", "Planos del sembrado"]},
+      { id: 14, nombre: "CLAVES CATASTRALES", requisitos: ["C3 aprobado", "Memorias descriptivas", "Tabla de indivisos"]},
+      { id: 15, nombre: "NÚMEROS OFICIALES", requisitos: ["Croquis de localización", "Escrituras del régimen", "Predial vigente"]},
+      { id: 16, nombre: "T.O. (TERMINACIÓN DE OBRA)", requisitos: ["Licencia de construcción", "Sembrado autorizado", "Certificación de gas", "Reporte fotográfico"]},
+      { id: 17, nombre: "C-4 (LICENCIA FINAL)", requisitos: ["C3 aprobado", "T.O. aprobada", "Fianza", "Sembrado autorizado", "Donaciones"]}
+    ];
+
+    const ESTADO_OPTS = [
+      { value: 'tenemos', label: '✓ Tenemos', bg: 'bg-green-500' },
+      { value: 'tramite', label: '⏳ En trámite', bg: 'bg-yellow-500' },
+      { value: 'pendiente', label: '❌ Pendiente', bg: 'bg-red-500' },
+      { value: 'no_aplica', label: '➖ No aplica', bg: 'bg-gray-400' }
+    ];
+
+    const VIGENCIA_OPTS = [
+      { value: 'vigente', label: '✓ Vigente', bg: 'bg-green-500' },
+      { value: 'no_vigente', label: '✗ No vigente', bg: 'bg-red-500' },
+      { value: 'no_aplica', label: '➖ No aplica', bg: 'bg-gray-400' }
+    ];
+
+    const PAGO_OPTS = [
+      { value: 'pagado', label: '✓ Pagado', bg: 'bg-green-500' },
+      { value: 'no_pagado', label: '✗ No pagado', bg: 'bg-red-500' },
+      { value: 'no_aplica', label: '➖ No aplica', bg: 'bg-gray-400' }
+    ];
+
+    // ==================== ESTADO GLOBAL ====================
+    let state = {
+      user: null,
+      token: localStorage.getItem('token'),
+      view: 'login',
+      tab: 'tramites',
+      tramitesData: {},
+      usuarios: [],
+      expanded: null,
+      loading: true,
+      changingPassword: false,
+      lastSync: new Date()
+    };
+
+    let socket = null;
+
+    // ==================== API ====================
+    async function api(endpoint, options = {}) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+      
+      const res = await fetch(`/api${endpoint}`, {
+        ...options,
+        headers: { ...headers, ...options.headers },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+      
+      if (res.status === 401) {
+        state.token = null;
+        state.user = null;
+        localStorage.removeItem('token');
+        render();
+      }
+      
+      return res.json();
+    }
+
+    // ==================== FUNCIONES ====================
+    async function verificarSesion() {
+      if (!state.token) {
+        state.loading = false;
+        render();
+        return;
+      }
+      
+      try {
+        const data = await api('/verificar-sesion');
+        if (data.usuario) {
+          state.user = data.usuario;
+          state.view = data.usuario.tempPassword ? 'change-password' : 'app';
+          await cargarDatos();
+          conectarSocket();
+        }
+      } catch (e) {
+        state.token = null;
+        localStorage.removeItem('token');
+      }
+      state.loading = false;
+      render();
+    }
+
+    async function cargarDatos() {
+      const data = await api('/tramites');
+      state.tramitesData = data.tramites || {};
+      state.lastSync = new Date();
+      
+      if (state.user?.rol === 'admin') {
+        const usuarios = await api('/usuarios');
+        state.usuarios = usuarios;
+      }
+    }
+
+    function conectarSocket() {
+      socket = io();
+      
+      socket.on('tramite_actualizado', (data) => {
+        if (!state.tramitesData[data.tramiteId]) {
+          state.tramitesData[data.tramiteId] = { requisitos: {} };
+        }
+        state.tramitesData[data.tramiteId].requisitos[data.requisito] = data.datos;
+        state.lastSync = new Date();
+        render();
+      });
+      
+      socket.on('usuarios_actualizados', async () => {
+        if (state.user?.rol === 'admin') {
+          state.usuarios = await api('/usuarios');
+          render();
+        }
+      });
+    }
+
+    async function login(email, password) {
+      try {
+        const data = await api('/login', { method: 'POST', body: { email, password } });
+        if (data.token) {
+          state.token = data.token;
+          state.user = data.usuario;
+          localStorage.setItem('token', data.token);
+          
+          if (data.usuario.tempPassword) {
+            state.view = 'change-password';
+          } else {
+            state.view = 'app';
+            await cargarDatos();
+            conectarSocket();
+          }
+        }
+        return data;
+      } catch (e) {
+        return { error: 'Error de conexión' };
+      }
+    }
+
+    async function registro(nombre, email, telefono) {
+      return await api('/registro', { method: 'POST', body: { nombre, email, telefono } });
+    }
+
+    async function cambiarPassword(nuevaPassword) {
+      const res = await api('/cambiar-password', { method: 'POST', body: { token: state.token, nuevaPassword } });
+      if (res.success) {
+        state.user.tempPassword = false;
+        state.view = 'app';
+        await cargarDatos();
+        conectarSocket();
+      }
+      return res;
+    }
+
+    async function logout() {
+      await api('/logout', { method: 'POST' });
+      state.token = null;
+      state.user = null;
+      state.view = 'login';
+      localStorage.removeItem('token');
+      if (socket) socket.disconnect();
+      render();
+    }
+
+    async function actualizarRequisito(tramiteId, requisito, datos) {
+      await api(`/tramites/${tramiteId}/requisitos`, { 
+        method: 'POST', 
+        body: { requisito, datos } 
+      });
+    }
+
+    async function crearUsuario(nombre, email, rol) {
+      return await api('/usuarios', { method: 'POST', body: { nombre, email, rol } });
+    }
+
+    async function actualizarUsuario(id, cambios) {
+      return await api(`/usuarios/${id}`, { method: 'PUT', body: cambios });
+    }
+
+    async function eliminarUsuario(id) {
+      return await api(`/usuarios/${id}`, { method: 'DELETE' });
+    }
+
+    // ==================== COMPONENTES ====================
+    function renderLogin() {
+      return `
+        <div class="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+            <div class="text-center mb-6">
+              <div class="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+              </div>
+              <h1 class="text-2xl font-bold text-gray-800">Control de Trámites</h1>
+              <p class="text-gray-500">Licencia C4 Condominio</p>
+            </div>
+
+            <div id="login-error" class="hidden bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-4 text-sm"></div>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
+                <input type="email" id="login-email" placeholder="tu@correo.com" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                <input type="password" id="login-password" placeholder="Tu contraseña" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              </div>
+              <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700">
+                Iniciar Sesión
+              </button>
+              <div class="relative">
+                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
+                <div class="relative flex justify-center text-sm"><span class="px-2 bg-white text-gray-500">o</span></div>
+              </div>
+              <button onclick="state.view='register'; render()" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                Crear cuenta nueva
+              </button>
+            </div>
+
+            <div class="mt-6 p-3 bg-gray-50 rounded-lg">
+              <p class="text-xs text-gray-500 text-center">
+                <strong>Usuario inicial:</strong> admin@empresa.com<br>
+                <strong>Contraseña:</strong> 1234
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRegister() {
+      return `
+        <div class="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+            <div class="flex items-center mb-6">
+              <button onclick="state.view='login'; render()" class="p-2 hover:bg-gray-100 rounded-lg mr-2">
+                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+              </button>
+              <h1 class="text-xl font-bold text-gray-800">Crear Cuenta</h1>
+            </div>
+
+            <div class="text-center mb-6">
+              <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+              </div>
+              <p class="text-gray-600 text-sm">Ingresa tus datos para crear tu cuenta</p>
+            </div>
+
+            <div id="register-error" class="hidden bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-4 text-sm"></div>
+            <div id="register-success" class="hidden bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg mb-4"></div>
+
+            <div id="register-form" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
+                <input type="text" id="register-nombre" placeholder="Ej: Juan Pérez García" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Correo electrónico *</label>
+                <input type="email" id="register-email" placeholder="tu@correo.com" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono (opcional)</label>
+                <input type="tel" id="register-telefono" placeholder="664 123 4567" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <button onclick="handleRegister()" id="register-btn" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                Enviar contraseña temporal
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderChangePassword() {
+      return `
+        <div class="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+            <div class="text-center mb-6">
+              <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+              </div>
+              <h1 class="text-xl font-bold text-gray-800">Crear nueva contraseña</h1>
+              <p class="text-sm text-gray-500 mt-1">Hola ${state.user?.nombre}, crea tu contraseña definitiva</p>
+            </div>
+
+            <div id="password-error" class="hidden bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-4 text-sm"></div>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña</label>
+                <input type="password" id="new-password" placeholder="Mínimo 6 caracteres" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña</label>
+                <input type="password" id="confirm-password" placeholder="Repite tu contraseña" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <button onclick="handleChangePassword()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700">
+                Guardar contraseña
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function getStatusClass(tramite) {
+      const data = state.tramitesData[tramite.id]?.requisitos || {};
+      const done = tramite.requisitos.filter(r => 
+        (data[r]?.estadoDoc === 'tenemos' || data[r]?.estadoDoc === 'no_aplica') &&
+        (data[r]?.vigencia === 'vigente' || data[r]?.vigencia === 'no_aplica')
+      ).length;
+      
+      if (done === tramite.requisitos.length) return 'status-green';
+      if (done > 0) return 'status-yellow';
+      return 'status-red';
+    }
+
+    function calcularAvance(tramite) {
+      const data = state.tramitesData[tramite.id]?.requisitos || {};
+      const avances = tramite.requisitos.map(r => data[r]?.avance || 0);
+      return avances.length ? (avances.reduce((a, b) => a + b, 0) / avances.length * 100).toFixed(0) : 0;
+    }
+
+    function calcularTotales(tramite) {
+      const data = state.tramitesData[tramite.id]?.requisitos || {};
+      let totalT = 0, totalG = 0;
+      tramite.requisitos.forEach(r => {
+        totalT += data[r]?.costoTramite || 0;
+        totalG += data[r]?.costoGestor || 0;
+      });
+      return { totalT, totalG };
+    }
+
+    function renderSelectField(id, value, options, disabled) {
+      const sel = options.find(o => o.value === value) || { bg: 'bg-gray-300' };
+      return `
+        <select id="${id}" ${disabled ? 'disabled' : ''} 
+          class="w-full p-1.5 rounded text-xs text-white font-medium ${sel.bg} ${disabled ? 'opacity-50' : ''} appearance-none pr-6">
+          <option value="">Seleccionar</option>
+          ${options.map(o => `<option value="${o.value}" ${value === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+      `;
+    }
+
+    function renderRequisito(tramiteId, req, idx) {
+      const data = state.tramitesData[tramiteId]?.requisitos?.[req] || {};
+      const canEdit = state.user?.rol === 'admin' || state.user?.rol === 'editor';
+      const avance = ((data.avance || 0) * 100).toFixed(0);
+      
+      return `
+        <div class="bg-gray-50 p-3 rounded-lg mb-2 text-xs">
+          <p class="font-medium text-gray-700 mb-2">• ${req}</p>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <span class="text-gray-500">Estado</span>
+              ${renderSelectField(`req-${tramiteId}-${idx}-estado`, data.estadoDoc, ESTADO_OPTS, !canEdit)}
+            </div>
+            <div>
+              <span class="text-gray-500">Vigencia</span>
+              ${renderSelectField(`req-${tramiteId}-${idx}-vigencia`, data.vigencia, VIGENCIA_OPTS, !canEdit)}
+            </div>
+            <div>
+              <span class="text-gray-500">Costo Trám.</span>
+              <input type="number" id="req-${tramiteId}-${idx}-costoT" value="${data.costoTramite || ''}" 
+                ${!canEdit ? 'disabled' : ''} class="w-full p-1.5 rounded border text-xs ${!canEdit ? 'bg-gray-100' : ''}" placeholder="$0">
+            </div>
+            <div>
+              <span class="text-gray-500">Pago Trám.</span>
+              ${renderSelectField(`req-${tramiteId}-${idx}-pagoT`, data.pagoTramite, PAGO_OPTS, !canEdit)}
+            </div>
+            <div>
+              <span class="text-gray-500">Costo Gest.</span>
+              <input type="number" id="req-${tramiteId}-${idx}-costoG" value="${data.costoGestor || ''}" 
+                ${!canEdit ? 'disabled' : ''} class="w-full p-1.5 rounded border text-xs ${!canEdit ? 'bg-gray-100' : ''}" placeholder="$0">
+            </div>
+            <div>
+              <span class="text-gray-500">Pago Gest.</span>
+              ${renderSelectField(`req-${tramiteId}-${idx}-pagoG`, data.pagoGestor, PAGO_OPTS, !canEdit)}
+            </div>
+          </div>
+          <div class="mt-2">
+            <span class="text-gray-500">Avance: ${avance}%</span>
+            <input type="range" id="req-${tramiteId}-${idx}-avance" min="0" max="100" value="${avance}" 
+              ${!canEdit ? 'disabled' : ''} class="w-full mt-1">
+            <div class="h-2 bg-gray-200 rounded-full mt-1">
+              <div class="h-2 bg-blue-500 rounded-full transition-all" style="width: ${avance}%"></div>
+            </div>
+          </div>
+          ${canEdit ? `<button onclick="guardarRequisito(${tramiteId}, '${req}', ${idx})" 
+            class="mt-2 w-full bg-blue-500 text-white py-1.5 rounded text-xs font-medium">Guardar</button>` : ''}
+        </div>
+      `;
+    }
+
+    function renderTramite(tramite) {
+      const avance = calcularAvance(tramite);
+      const { totalT, totalG } = calcularTotales(tramite);
+      const isExpanded = state.expanded === tramite.id;
+      
+      return `
+        <div class="rounded-xl overflow-hidden shadow-lg mb-3">
+          <div class="${getStatusClass(tramite)} p-3 cursor-pointer" onclick="toggleTramite(${tramite.id})">
+            <div class="flex items-center text-white">
+              <svg class="w-5 h-5 mr-2 transition-transform ${isExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+              </svg>
+              <div class="flex-1">
+                <span class="font-bold">#${tramite.id}</span>
+                <p class="text-sm font-medium">${tramite.nombre}</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mt-2">
+              <div class="bg-white/20 rounded p-1 text-center text-white">
+                <p class="text-xs opacity-80">Avance</p>
+                <p class="font-bold text-sm">${avance}%</p>
+              </div>
+              <div class="bg-white/20 rounded p-1 text-center text-white">
+                <p class="text-xs opacity-80">Trámite</p>
+                <p class="font-bold text-xs">$${totalT.toLocaleString()}</p>
+              </div>
+              <div class="bg-white/20 rounded p-1 text-center text-white">
+                <p class="text-xs opacity-80">Gestor</p>
+                <p class="font-bold text-xs">$${totalG.toLocaleString()}</p>
+              </div>
+            </div>
+            <div class="h-2 bg-white/30 rounded-full mt-2">
+              <div class="h-2 bg-white rounded-full transition-all" style="width: ${avance}%"></div>
+            </div>
+          </div>
+          ${isExpanded ? `
+            <div class="bg-white p-3">
+              <p class="font-semibold text-gray-700 mb-2 text-sm">Requisitos (${tramite.requisitos.length})</p>
+              ${tramite.requisitos.map((r, i) => renderRequisito(tramite.id, r, i)).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderResumen() {
+      let totalT = 0, totalG = 0, totalAvg = 0;
+      TRAMITES.forEach(t => {
+        const { totalT: tt, totalG: tg } = calcularTotales(t);
+        totalT += tt;
+        totalG += tg;
+        totalAvg += parseFloat(calcularAvance(t));
+      });
+      const avg = (totalAvg / TRAMITES.length).toFixed(1);
+
+      return `
+        <div class="p-4">
+          <h2 class="text-lg font-bold text-gray-800 mb-4">Resumen Ejecutivo</h2>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="bg-blue-500 p-3 rounded-xl text-white">
+              <p class="text-xs opacity-80">Gastos Trámites</p>
+              <p class="text-xl font-bold">$${totalT.toLocaleString()}</p>
+            </div>
+            <div class="bg-purple-500 p-3 rounded-xl text-white">
+              <p class="text-xs opacity-80">Gastos Gestión</p>
+              <p class="text-xl font-bold">$${totalG.toLocaleString()}</p>
+            </div>
+          </div>
+          <div class="bg-gradient-to-r from-yellow-400 to-orange-500 p-4 rounded-xl text-white mb-4">
+            <p class="text-xs opacity-80">Total Inversión</p>
+            <p class="text-2xl font-bold">$${(totalT + totalG).toLocaleString()}</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl shadow">
+            <p class="text-gray-600 text-sm mb-1">Avance General</p>
+            <p class="text-3xl font-bold text-blue-600">${avg}%</p>
+            <div class="h-3 bg-gray-200 rounded-full mt-2">
+              <div class="h-3 bg-gradient-to-r from-blue-500 to-green-500 rounded-full transition-all" style="width: ${avg}%"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function getRolIcon(rol) {
+      if (rol === 'admin') return '👑';
+      if (rol === 'editor') return '✏️';
+      return '👁️';
+    }
+
+    function renderUsuarios() {
+      return `
+        <div class="p-4">
+          <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            Gestión de Usuarios
+          </h2>
+          
+          <div class="bg-blue-50 p-3 rounded-xl mb-4">
+            <p class="font-semibold text-blue-800 mb-2 text-sm">Invitar Usuario</p>
+            <input id="new-user-nombre" placeholder="Nombre" class="w-full p-2 rounded border mb-2 text-sm">
+            <input id="new-user-email" placeholder="Email" class="w-full p-2 rounded border mb-2 text-sm">
+            <select id="new-user-rol" class="w-full p-2 rounded border mb-2 text-sm">
+              <option value="viewer">👁️ Viewer (Solo ver)</option>
+              <option value="editor">✏️ Editor (Ver y editar)</option>
+              <option value="admin">👑 Admin (Control total)</option>
+            </select>
+            <button onclick="handleCrearUsuario()" class="w-full bg-blue-600 text-white py-2 rounded font-semibold text-sm">
+              + Invitar Usuario
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            ${state.usuarios.map(u => `
+              <div class="bg-white p-3 rounded-xl shadow">
+                <div class="flex items-center justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center">
+                      <span class="text-lg mr-2">${getRolIcon(u.rol)}</span>
+                      <div>
+                        <p class="font-semibold text-sm">${u.nombre}</p>
+                        <p class="text-xs text-gray-500">${u.email}</p>
+                      </div>
+                    </div>
+                    ${u.temp_password ? '<span class="inline-block mt-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">Contraseña temporal</span>' : ''}
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <select onchange="handleCambiarRol(${u.id}, this.value)" ${u.id === state.user.id ? 'disabled' : ''} class="p-1 rounded border text-xs">
+                      <option value="viewer" ${u.rol === 'viewer' ? 'selected' : ''}>👁️</option>
+                      <option value="editor" ${u.rol === 'editor' ? 'selected' : ''}>✏️</option>
+                      <option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>👑</option>
+                    </select>
+                    ${u.id !== state.user.id ? `
+                      <button onclick="handleEliminarUsuario(${u.id})" class="p-1 bg-red-100 text-red-600 rounded">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderApp() {
+      const isAdmin = state.user?.rol === 'admin';
+      
+      return `
+        <div class="min-h-screen bg-gray-100">
+          <!-- Header -->
+          <div class="bg-gradient-to-r from-blue-800 to-blue-600 text-white p-3 sticky top-0 z-50">
+            <div class="flex items-center justify-between">
+              <div>
+                <h1 class="font-bold">Control C4</h1>
+                <p class="text-xs opacity-80">${state.user?.nombre} • ${getRolIcon(state.user?.rol)} ${state.user?.rol}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs opacity-80">Sync: ${state.lastSync.toLocaleTimeString()}</span>
+                <button onclick="logout()" class="p-2 bg-white/20 rounded">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contenido -->
+          <div class="pb-16">
+            ${state.tab === 'tramites' ? `<div class="p-3">${TRAMITES.map(t => renderTramite(t)).join('')}</div>` : ''}
+            ${state.tab === 'resumen' ? renderResumen() : ''}
+            ${state.tab === 'usuarios' && isAdmin ? renderUsuarios() : ''}
+          </div>
+
+          <!-- Bottom Nav -->
+          <div class="fixed bottom-0 left-0 right-0 bg-white border-t px-4 py-2 flex justify-around">
+            <button onclick="setTab('tramites')" class="flex flex-col items-center p-1 ${state.tab === 'tramites' ? 'text-blue-600' : 'text-gray-400'}">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              <span class="text-xs">Trámites</span>
+            </button>
+            <button onclick="setTab('resumen')" class="flex flex-col items-center p-1 ${state.tab === 'resumen' ? 'text-blue-600' : 'text-gray-400'}">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+              <span class="text-xs">Resumen</span>
+            </button>
+            ${isAdmin ? `
+              <button onclick="setTab('usuarios')" class="flex flex-col items-center p-1 ${state.tab === 'usuarios' ? 'text-blue-600' : 'text-gray-400'}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                <span class="text-xs">Usuarios</span>
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderLoading() {
+      return `
+        <div class="min-h-screen bg-gray-100 flex items-center justify-center">
+          <div class="text-center">
+            <svg class="w-10 h-10 text-blue-600 animate-spin mx-auto" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-gray-600 mt-2">Cargando...</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== HANDLERS ====================
+    async function handleLogin() {
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const errorDiv = document.getElementById('login-error');
+      
+      if (!email || !password) {
+        errorDiv.textContent = 'Ingresa email y contraseña';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      
+      const result = await login(email, password);
+      if (result.error) {
+        errorDiv.textContent = result.error;
+        errorDiv.classList.remove('hidden');
+      } else {
+        render();
+      }
+    }
+
+    async function handleRegister() {
+      const nombre = document.getElementById('register-nombre').value;
+      const email = document.getElementById('register-email').value;
+      const telefono = document.getElementById('register-telefono').value;
+      const errorDiv = document.getElementById('register-error');
+      const successDiv = document.getElementById('register-success');
+      const formDiv = document.getElementById('register-form');
+      
+      if (!nombre || !email) {
+        errorDiv.textContent = 'Ingresa nombre y email';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      
+      const result = await registro(nombre, email, telefono);
+      if (result.error) {
+        errorDiv.textContent = result.error;
+        errorDiv.classList.remove('hidden');
+      } else {
+        formDiv.classList.add('hidden');
+        successDiv.innerHTML = `
+          <p class="font-bold text-green-800 mb-2">✅ ¡Cuenta creada!</p>
+          <p class="text-sm mb-2">Tu contraseña temporal es:</p>
+          <div class="bg-white rounded p-3 text-center">
+            <span class="text-2xl font-mono font-bold text-green-700">${result.tempPassword}</span>
+          </div>
+          <p class="text-xs mt-2">Usa esta contraseña para iniciar sesión. Luego podrás cambiarla.</p>
+          <button onclick="state.view='login'; render()" class="mt-3 w-full bg-green-600 text-white py-2 rounded font-semibold">
+            Ir a iniciar sesión
+          </button>
+        `;
+        successDiv.classList.remove('hidden');
+      }
+    }
+
+    async function handleChangePassword() {
+      const newPass = document.getElementById('new-password').value;
+      const confirmPass = document.getElementById('confirm-password').value;
+      const errorDiv = document.getElementById('password-error');
+      
+      if (newPass.length < 6) {
+        errorDiv.textContent = 'La contraseña debe tener al menos 6 caracteres';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      
+      if (newPass !== confirmPass) {
+        errorDiv.textContent = 'Las contraseñas no coinciden';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      
+      await cambiarPassword(newPass);
+      render();
+    }
+
+    function toggleTramite(id) {
+      state.expanded = state.expanded === id ? null : id;
+      render();
+    }
+
+    function setTab(tab) {
+      state.tab = tab;
+      render();
+    }
+
+    async function guardarRequisito(tramiteId, requisito, idx) {
+      const datos = {
+        estadoDoc: document.getElementById(`req-${tramiteId}-${idx}-estado`).value,
+        vigencia: document.getElementById(`req-${tramiteId}-${idx}-vigencia`).value,
+        costoTramite: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-costoT`).value) || 0,
+        pagoTramite: document.getElementById(`req-${tramiteId}-${idx}-pagoT`).value,
+        costoGestor: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-costoG`).value) || 0,
+        pagoGestor: document.getElementById(`req-${tramiteId}-${idx}-pagoG`).value,
+        avance: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-avance`).value) / 100
+      };
+      
+      await actualizarRequisito(tramiteId, requisito, datos);
+      
+      // Actualizar estado local
+      if (!state.tramitesData[tramiteId]) state.tramitesData[tramiteId] = { requisitos: {} };
+      state.tramitesData[tramiteId].requisitos[requisito] = datos;
+      
+      render();
+    }
+
+    async function handleCrearUsuario() {
+      const nombre = document.getElementById('new-user-nombre').value;
+      const email = document.getElementById('new-user-email').value;
+      const rol = document.getElementById('new-user-rol').value;
+      
+      if (!nombre || !email) {
+        alert('Ingresa nombre y email');
+        return;
+      }
+      
+      const result = await crearUsuario(nombre, email, rol);
+      if (result.error) {
+        alert(result.error);
+      } else {
+        alert(`Usuario creado!\n\nContraseña temporal: ${result.tempPassword}\n\nEnvía esta contraseña al usuario.`);
+        state.usuarios = await api('/usuarios');
+        render();
+      }
+    }
+
+    async function handleCambiarRol(id, rol) {
+      await actualizarUsuario(id, { rol });
+      state.usuarios = await api('/usuarios');
+      render();
+    }
+
+    async function handleEliminarUsuario(id) {
+      if (confirm('¿Eliminar este usuario?')) {
+        await eliminarUsuario(id);
+        state.usuarios = await api('/usuarios');
+        render();
+      }
+    }
+
+    // ==================== RENDER ====================
+    function render() {
+      const app = document.getElementById('app');
+      
+      if (state.loading) {
+        app.innerHTML = renderLoading();
+      } else if (state.view === 'login') {
+        app.innerHTML = renderLogin();
+      } else if (state.view === 'register') {
+        app.innerHTML = renderRegister();
+      } else if (state.view === 'change-password') {
+        app.innerHTML = renderChangePassword();
+      } else {
+        app.innerHTML = renderApp();
+      }
+    }
+
+    // ==================== INIT ====================
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+
+    verificarSesion();
+  </script>
+</body>
+</html>
