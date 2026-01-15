@@ -134,33 +134,22 @@ async function initDB() {
 
     console.log('✅ Base de datos inicializada');
 
-    // Crear o actualizar superadmins
-    const admin1Check = await client.query('SELECT id FROM usuarios WHERE email = $1', ['superadmin@empresa.com']);
-    if (admin1Check.rows.length === 0) {
-      await client.query(
-        'INSERT INTO usuarios (nombre, email, password, es_superadmin, temp_password) VALUES ($1, $2, $3, $4, $5)',
-        ['Super Administrador', 'superadmin@empresa.com', '1234', true, false]
-      );
-      console.log('✅ Usuario superadmin creado (superadmin@empresa.com / 1234)');
-    } else {
-      await client.query('UPDATE usuarios SET es_superadmin = true WHERE email = $1', ['superadmin@empresa.com']);
-    }
-
-    const admin2Check = await client.query('SELECT id FROM usuarios WHERE email = $1', ['josejimenezsalinas81@gmail.com']);
-    if (admin2Check.rows.length === 0) {
+    // Solo Jose Jimenez es superadmin
+    const joseCheck = await client.query('SELECT id FROM usuarios WHERE email = $1', ['josejimenezsalinas81@gmail.com']);
+    if (joseCheck.rows.length === 0) {
       await client.query(
         'INSERT INTO usuarios (nombre, email, password, es_superadmin, temp_password) VALUES ($1, $2, $3, $4, $5)',
         ['Jose Jimenez', 'josejimenezsalinas81@gmail.com', 'Jo$e1687Wendy0421', true, false]
       );
-      console.log('✅ Usuario superadmin Jose creado');
+      console.log('✅ Usuario administrador Jose creado');
     } else {
       await client.query('UPDATE usuarios SET es_superadmin = true WHERE email = $1', ['josejimenezsalinas81@gmail.com']);
     }
 
-    // También actualizar admin@empresa.com si existe
-    await client.query('UPDATE usuarios SET es_superadmin = true WHERE email = $1', ['admin@empresa.com']);
+    // Asegurar que ningún otro usuario sea superadmin
+    await client.query('UPDATE usuarios SET es_superadmin = false WHERE email != $1', ['josejimenezsalinas81@gmail.com']);
 
-    console.log('✅ Superadmins configurados');
+    console.log('✅ Administrador configurado');
   } finally {
     client.release();
   }
@@ -678,13 +667,13 @@ app.get('/api/usuarios', verificarToken, async (req, res) => {
   }
 });
 
-// Crear usuario global (superadmin)
+// Crear usuario global (solo admin puede crear)
 app.post('/api/usuarios', verificarToken, async (req, res) => {
   if (!req.user.es_superadmin) {
     return res.status(403).json({ error: 'No autorizado' });
   }
 
-  const { nombre, email, esSuperadmin } = req.body;
+  const { nombre, email } = req.body;
   const client = await pool.connect();
 
   try {
@@ -696,7 +685,7 @@ app.post('/api/usuarios', verificarToken, async (req, res) => {
     const tempPass = generarPassword();
     await client.query(
       'INSERT INTO usuarios (nombre, email, password, es_superadmin, temp_password) VALUES ($1, $2, $3, $4, true)',
-      [nombre, email.toLowerCase(), tempPass, esSuperadmin || false]
+      [nombre, email.toLowerCase(), tempPass, false]
     );
 
     res.json({ success: true, tempPassword: tempPass });
