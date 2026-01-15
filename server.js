@@ -100,14 +100,23 @@ async function initDB() {
       );
     `);
 
-    // Crear superadmin por defecto si no existe
-    const adminCheck = await client.query('SELECT id FROM usuarios WHERE email = $1', ['admin@empresa.com']);
-    if (adminCheck.rows.length === 0) {
+    // Crear superadmins por defecto si no existen
+    const admin1Check = await client.query('SELECT id FROM usuarios WHERE email = $1', ['superadmin@empresa.com']);
+    if (admin1Check.rows.length === 0) {
       await client.query(
         'INSERT INTO usuarios (nombre, email, password, es_superadmin, temp_password) VALUES ($1, $2, $3, $4, $5)',
-        ['Administrador', 'admin@empresa.com', '1234', true, false]
+        ['Super Administrador', 'superadmin@empresa.com', '1234', true, false]
       );
-      console.log('✅ Usuario superadmin creado (admin@empresa.com / 1234)');
+      console.log('✅ Usuario superadmin creado (superadmin@empresa.com / 1234)');
+    }
+
+    const admin2Check = await client.query('SELECT id FROM usuarios WHERE email = $1', ['josejimenezsalinas81@gmail.com']);
+    if (admin2Check.rows.length === 0) {
+      await client.query(
+        'INSERT INTO usuarios (nombre, email, password, es_superadmin, temp_password) VALUES ($1, $2, $3, $4, $5)',
+        ['Jose Jimenez', 'josejimenezsalinas81@gmail.com', 'Jo$e1687Wendy0421', true, false]
+      );
+      console.log('✅ Usuario superadmin Jose creado');
     }
 
     console.log('✅ Base de datos inicializada');
@@ -258,6 +267,44 @@ app.get('/api/verificar-sesion', async (req, res) => {
         tempPassword: u.temp_password
       }
     });
+  } finally {
+    client.release();
+  }
+});
+
+// Registro público de usuarios
+app.post('/api/registro', async (req, res) => {
+  const { nombre, email, telefono, password } = req.body;
+  const client = await pool.connect();
+
+  try {
+    if (!nombre || !email || !password) {
+      return res.status(400).json({ error: 'Nombre, email y contraseña son obligatorios' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const existe = await client.query('SELECT id FROM usuarios WHERE LOWER(email) = LOWER($1)', [email]);
+    if (existe.rows.length > 0) {
+      return res.status(400).json({ error: 'Este correo ya está registrado' });
+    }
+
+    await client.query(
+      'INSERT INTO usuarios (nombre, email, telefono, password, es_superadmin, temp_password) VALUES ($1, $2, $3, $4, $5, $6)',
+      [nombre, email.toLowerCase(), telefono || null, password, false, false]
+    );
+
+    io.emit('usuario_registrado', { nombre, email });
+
+    res.json({
+      success: true,
+      mensaje: 'Cuenta creada exitosamente. El administrador debe asignarte a un proyecto.'
+    });
+  } catch (error) {
+    console.error('Error en registro:', error);
+    res.status(500).json({ error: 'Error al crear la cuenta' });
   } finally {
     client.release();
   }
@@ -856,9 +903,9 @@ initDB().then(() => {
     console.log('╠════════════════════════════════════════════════════════════╣');
     console.log(`║   🌐 Servidor corriendo en puerto ${PORT}                    ║`);
     console.log('║                                                            ║');
-    console.log('║   👤 Usuario administrador:                                ║');
-    console.log('║      Email: admin@empresa.com                              ║');
-    console.log('║      Contraseña: 1234                                      ║');
+    console.log('║   👤 Usuarios superadmin:                                  ║');
+    console.log('║      1. superadmin@empresa.com / 1234                      ║');
+    console.log('║      2. josejimenezsalinas81@gmail.com                     ║');
     console.log('╚════════════════════════════════════════════════════════════╝');
     console.log('');
   });
