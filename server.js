@@ -670,7 +670,7 @@ app.get('/api/usuarios', verificarToken, async (req, res) => {
   try {
     const result = await client.query(
       `SELECT id, nombre, email, telefono, es_superadmin, temp_password, fecha_registro, activo 
-       FROM usuarios ORDER BY fecha_registro DESC`
+       FROM usuarios WHERE activo = true ORDER BY fecha_registro DESC`
     );
     res.json(result.rows);
   } finally {
