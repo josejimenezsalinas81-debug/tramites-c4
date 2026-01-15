@@ -25,6 +25,22 @@ const pool = new Pool({
 async function initDB() {
   const client = await pool.connect();
   try {
+    // Migración: Agregar columnas nuevas si no existen (para bases de datos existentes)
+    // Esto debe ejecutarse ANTES de crear las tablas para evitar conflictos
+    await client.query(`
+      DO $$ 
+      BEGIN
+        -- Agregar es_superadmin a usuarios si no existe
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'usuarios') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'es_superadmin') THEN
+            ALTER TABLE usuarios ADD COLUMN es_superadmin BOOLEAN DEFAULT false;
+            RAISE NOTICE 'Columna es_superadmin agregada a usuarios';
+          END IF;
+        END IF;
+      END $$;
+    `);
+
+    // Crear tablas si no existen
     await client.query(`
       CREATE TABLE IF NOT EXISTS usuarios (
         id SERIAL PRIMARY KEY,
@@ -46,14 +62,14 @@ async function initDB() {
         responsable TEXT,
         fecha_inicio DATE,
         activo BOOLEAN DEFAULT true,
-        creado_por INTEGER REFERENCES usuarios(id),
+        creado_por INTEGER,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS proyecto_usuarios (
         id SERIAL PRIMARY KEY,
-        proyecto_id INTEGER REFERENCES proyectos(id) ON DELETE CASCADE,
-        usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+        proyecto_id INTEGER,
+        usuario_id INTEGER,
         rol TEXT DEFAULT 'viewer',
         fecha_asignacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(proyecto_id, usuario_id)
@@ -61,7 +77,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS tramites_data (
         id SERIAL PRIMARY KEY,
-        proyecto_id INTEGER REFERENCES proyectos(id) ON DELETE CASCADE,
+        proyecto_id INTEGER,
         tramite_id INTEGER NOT NULL,
         requisito TEXT NOT NULL,
         estado_doc TEXT,
@@ -74,33 +90,51 @@ async function initDB() {
         avance DECIMAL DEFAULT 0,
         notas TEXT,
         actualizado_por INTEGER,
-        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(proyecto_id, tramite_id, requisito)
+        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS archivos (
         id SERIAL PRIMARY KEY,
-        proyecto_id INTEGER REFERENCES proyectos(id) ON DELETE CASCADE,
+        proyecto_id INTEGER,
         tramite_id INTEGER NOT NULL,
         requisito TEXT NOT NULL,
         nombre_archivo TEXT NOT NULL,
         tipo_archivo TEXT NOT NULL,
         tamanio INTEGER,
         contenido TEXT NOT NULL,
-        subido_por INTEGER REFERENCES usuarios(id),
+        subido_por INTEGER,
         fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS sesiones (
         id SERIAL PRIMARY KEY,
-        usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+        usuario_id INTEGER,
         token TEXT UNIQUE,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         fecha_expiracion TIMESTAMP
       );
     `);
 
-    // Crear superadmins por defecto si no existen
+    // Agregar columna proyecto_id a tramites_data si no existe (migración)
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tramites_data') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tramites_data' AND column_name = 'proyecto_id') THEN
+            ALTER TABLE tramites_data ADD COLUMN proyecto_id INTEGER;
+          END IF;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'archivos') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'archivos' AND column_name = 'proyecto_id') THEN
+            ALTER TABLE archivos ADD COLUMN proyecto_id INTEGER;
+          END IF;
+        END IF;
+      END $$;
+    `);
+
+    console.log('✅ Base de datos inicializada');
+
+    // Crear o actualizar superadmins
     const admin1Check = await client.query('SELECT id FROM usuarios WHERE email = $1', ['superadmin@empresa.com']);
     if (admin1Check.rows.length === 0) {
       await client.query(
@@ -108,6 +142,8 @@ async function initDB() {
         ['Super Administrador', 'superadmin@empresa.com', '1234', true, false]
       );
       console.log('✅ Usuario superadmin creado (superadmin@empresa.com / 1234)');
+    } else {
+      await client.query('UPDATE usuarios SET es_superadmin = true WHERE email = $1', ['superadmin@empresa.com']);
     }
 
     const admin2Check = await client.query('SELECT id FROM usuarios WHERE email = $1', ['josejimenezsalinas81@gmail.com']);
@@ -117,9 +153,14 @@ async function initDB() {
         ['Jose Jimenez', 'josejimenezsalinas81@gmail.com', 'Jo$e1687Wendy0421', true, false]
       );
       console.log('✅ Usuario superadmin Jose creado');
+    } else {
+      await client.query('UPDATE usuarios SET es_superadmin = true WHERE email = $1', ['josejimenezsalinas81@gmail.com']);
     }
 
-    console.log('✅ Base de datos inicializada');
+    // También actualizar admin@empresa.com si existe
+    await client.query('UPDATE usuarios SET es_superadmin = true WHERE email = $1', ['admin@empresa.com']);
+
+    console.log('✅ Superadmins configurados');
   } finally {
     client.release();
   }
@@ -905,7 +946,7 @@ initDB().then(() => {
     console.log('║                                                            ║');
     console.log('║   👤 Usuarios superadmin:                                  ║');
     console.log('║      1. superadmin@empresa.com / 1234                      ║');
-    console.log('║      2. josejimenezsalinas81@gmail.com / 1234                     ║');
+    console.log('║      2. josejimenezsalinas81@gmail.com                     ║');
     console.log('╚════════════════════════════════════════════════════════════╝');
     console.log('');
   });
