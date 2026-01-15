@@ -1074,12 +1074,24 @@
           return;
         }
         
-        container.innerHTML = usuarios.map(u => {
+        // Cargar proyectos de cada usuario
+        const usuariosConProyectos = await Promise.all(usuarios.map(async u => {
+          if (!u.es_superadmin) {
+            const proyectosUsuario = await api(`/usuarios/${u.id}/proyectos`);
+            return { ...u, proyectosAsignados: proyectosUsuario };
+          }
+          return { ...u, proyectosAsignados: [] };
+        }));
+        
+        container.innerHTML = usuariosConProyectos.map(u => {
           const esTu = u.id === state.user.id;
           const esAdmin = u.es_superadmin;
+          const proyectosDisponibles = proyectos.filter(p => 
+            !u.proyectosAsignados.some(pa => pa.id === p.id)
+          );
           
           return `
-            <div class="bg-white p-4 rounded-xl shadow">
+            <div class="bg-white p-4 rounded-xl shadow mb-3">
               <!-- Info del usuario -->
               <div class="flex items-start justify-between mb-3">
                 <div class="flex items-center">
@@ -1100,26 +1112,54 @@
               </div>
               
               ${!esAdmin ? `
-                <!-- Asignar a proyecto -->
+                <!-- Proyectos asignados -->
                 <div class="border-t pt-3">
-                  <p class="text-xs font-semibold text-gray-600 mb-2">📁 Asignar a proyecto:</p>
-                  <div class="flex gap-2">
-                    <select id="proyecto-para-${u.id}" class="flex-1 p-2 border rounded text-sm">
-                      <option value="">Seleccionar proyecto...</option>
-                      ${proyectos.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('')}
-                    </select>
-                    <select id="rol-para-${u.id}" class="p-2 border rounded text-sm">
-                      <option value="viewer">👁️ Solo ver</option>
-                      <option value="editor">✏️ Ver y editar</option>
-                    </select>
-                    <button onclick="asignarUsuarioAProyecto(${u.id})" class="px-3 py-2 bg-green-500 text-white rounded text-sm font-semibold hover:bg-green-600">
-                      Asignar
-                    </button>
-                  </div>
+                  <p class="text-xs font-semibold text-gray-600 mb-2">📁 Proyectos asignados:</p>
+                  
+                  ${u.proyectosAsignados.length > 0 ? `
+                    <div class="space-y-2 mb-3">
+                      ${u.proyectosAsignados.map(p => `
+                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded">
+                          <div class="flex items-center">
+                            <span class="text-sm font-medium">${p.nombre}</span>
+                            <span class="ml-2 px-2 py-0.5 text-xs rounded ${p.rol === 'editor' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}">
+                              ${p.rol === 'editor' ? '✏️ Editar' : '👁️ Ver'}
+                            </span>
+                          </div>
+                          <button onclick="quitarUsuarioDeProyecto(${u.id}, ${p.id})" class="p-1 text-red-500 hover:bg-red-100 rounded" title="Quitar del proyecto">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : `
+                    <p class="text-xs text-gray-400 italic mb-3">Sin proyectos asignados</p>
+                  `}
+                  
+                  <!-- Agregar a proyecto -->
+                  ${proyectosDisponibles.length > 0 ? `
+                    <div class="flex gap-2 mt-2">
+                      <select id="proyecto-para-${u.id}" class="flex-1 p-2 border rounded text-sm">
+                        <option value="">+ Agregar a proyecto...</option>
+                        ${proyectosDisponibles.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('')}
+                      </select>
+                      <select id="rol-para-${u.id}" class="p-2 border rounded text-sm">
+                        <option value="viewer">👁️ Ver</option>
+                        <option value="editor">✏️ Editar</option>
+                      </select>
+                      <button onclick="asignarUsuarioAProyecto(${u.id})" class="px-3 py-2 bg-green-500 text-white rounded text-sm font-semibold hover:bg-green-600">
+                        Agregar
+                      </button>
+                    </div>
+                  ` : `
+                    <p class="text-xs text-green-600">✅ Asignado a todos los proyectos</p>
+                  `}
                 </div>
               ` : `
                 <div class="border-t pt-3">
-                  <p class="text-xs text-purple-600">👑 Administrador del sistema - Acceso total a todos los proyectos</p>
+                  <p class="text-xs text-purple-600">👑 Administrador - Acceso total a todos los proyectos</p>
                 </div>
               `}
             </div>
@@ -1137,7 +1177,7 @@
         return;
       }
       
-      // Obtener el email del usuario para usar el endpoint existente
+      // Obtener el email del usuario
       const usuarios = await api('/usuarios');
       const usuario = usuarios.find(u => u.id === usuarioId);
       
@@ -1154,8 +1194,21 @@
       if (res.error) {
         alert(res.error);
       } else {
-        alert(`✅ ${usuario.nombre} asignado al proyecto como ${rol === 'viewer' ? 'Solo ver' : 'Ver y editar'}`);
-        document.getElementById(`proyecto-para-${usuarioId}`).value = '';
+        cargarUsuariosGlobales(); // Recargar la lista
+      }
+    }
+
+    async function quitarUsuarioDeProyecto(usuarioId, proyectoId) {
+      if (!confirm('¿Quitar este usuario del proyecto?')) return;
+      
+      const res = await api(`/proyectos/${proyectoId}/usuarios/${usuarioId}`, {
+        method: 'DELETE'
+      });
+      
+      if (res.error) {
+        alert(res.error);
+      } else {
+        cargarUsuariosGlobales(); // Recargar la lista
       }
     }
 
