@@ -220,7 +220,7 @@ app.post('/api/registro', async (req, res) => {
   }
 });
 
-// Cambiar contraseña
+// Cambiar contraseña (primera vez - con token)
 app.post('/api/cambiar-password', async (req, res) => {
   const { token, nuevaPassword } = req.body;
   const client = await pool.connect();
@@ -238,6 +238,34 @@ app.post('/api/cambiar-password', async (req, res) => {
     await client.query(
       'UPDATE usuarios SET password = $1, temp_password = false WHERE id = $2',
       [nuevaPassword, sesion.rows[0].usuario_id]
+    );
+
+    res.json({ success: true });
+  } finally {
+    client.release();
+  }
+});
+
+// Cambiar mi contraseña (usuario autenticado)
+app.post('/api/cambiar-mi-password', verificarToken, async (req, res) => {
+  const { passwordActual, passwordNueva } = req.body;
+  const client = await pool.connect();
+
+  try {
+    // Verificar contraseña actual
+    const usuario = await client.query(
+      'SELECT password FROM usuarios WHERE id = $1',
+      [req.user.id]
+    );
+
+    if (usuario.rows.length === 0 || usuario.rows[0].password !== passwordActual) {
+      return res.status(400).json({ error: 'La contraseña actual es incorrecta' });
+    }
+
+    // Actualizar contraseña
+    await client.query(
+      'UPDATE usuarios SET password = $1 WHERE id = $2',
+      [passwordNueva, req.user.id]
     );
 
     res.json({ success: true });
