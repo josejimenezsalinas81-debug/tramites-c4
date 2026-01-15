@@ -270,9 +270,13 @@
             </div>
 
             <div class="mt-6 p-3 bg-gray-50 rounded-lg">
-              <p class="text-xs text-gray-500 text-center">
-                ¿No tienes cuenta? Contacta al administrador<br>para solicitar acceso.
+              <p class="text-xs text-gray-500 text-center mb-3">
+                ¿No tienes cuenta?
               </p>
+              <button onclick="state.view='registro'; render()" 
+                class="w-full bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700">
+                Crear cuenta
+              </button>
             </div>
           </div>
         </div>
@@ -308,6 +312,70 @@
               </div>
               <button onclick="handleChangePassword()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700">
                 Guardar contraseña
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRegistro() {
+      return `
+        <div class="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+            <div class="text-center mb-6">
+              <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                </svg>
+              </div>
+              <h1 class="text-xl font-bold text-gray-800">Crear cuenta</h1>
+              <p class="text-sm text-gray-500 mt-1">Regístrate para solicitar acceso</p>
+            </div>
+
+            <div id="registro-error" class="hidden bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-4 text-sm"></div>
+            <div id="registro-success" class="hidden bg-green-50 border border-green-200 text-green-700 p-3 rounded-lg mb-4 text-sm"></div>
+
+            <div id="registro-form" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
+                <input type="text" id="registro-nombre" placeholder="Tu nombre" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Correo electrónico *</label>
+                <input type="email" id="registro-email" placeholder="tu@correo.com" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                <input type="tel" id="registro-telefono" placeholder="(opcional)" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña *</label>
+                <input type="password" id="registro-password" placeholder="Mínimo 6 caracteres" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña *</label>
+                <input type="password" id="registro-password2" placeholder="Repite tu contraseña" 
+                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+              </div>
+              <button onclick="handleRegistro()" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700">
+                Crear mi cuenta
+              </button>
+            </div>
+
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p class="text-xs text-blue-700 text-center">
+                <strong>Nota:</strong> Al crear tu cuenta, el administrador deberá asignarte a un proyecto para que puedas ver la información.
+              </p>
+            </div>
+
+            <div class="mt-4 text-center">
+              <button onclick="state.view='login'; render()" class="text-blue-600 text-sm hover:underline">
+                ← Volver a iniciar sesión
               </button>
             </div>
           </div>
@@ -465,13 +533,16 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                 </svg>
               </button>
-              <h1 class="text-xl font-bold">Usuarios del Sistema</h1>
+              <div>
+                <h1 class="text-xl font-bold">Usuarios del Sistema</h1>
+                <p class="text-xs opacity-80">Gestiona todos los usuarios registrados</p>
+              </div>
             </div>
           </div>
 
           <div class="p-4">
             <div class="bg-blue-50 p-4 rounded-xl mb-4">
-              <p class="font-semibold text-blue-800 mb-2">Crear Usuario</p>
+              <p class="font-semibold text-blue-800 mb-2">Crear Usuario Manualmente</p>
               <input id="nuevo-usuario-nombre" placeholder="Nombre" class="w-full p-2 rounded border mb-2">
               <input id="nuevo-usuario-email" placeholder="Email" class="w-full p-2 rounded border mb-2">
               <label class="flex items-center mb-2">
@@ -483,6 +554,14 @@
               </button>
             </div>
 
+            <div class="bg-yellow-50 border border-yellow-200 p-3 rounded-xl mb-4">
+              <p class="text-sm text-yellow-800">
+                <strong>💡 Tip:</strong> Los usuarios pueden registrarse solos desde la pantalla de inicio. 
+                Aparecerán aquí y podrás agregarlos a proyectos desde cada proyecto.
+              </p>
+            </div>
+
+            <p class="text-sm text-gray-600 mb-2 font-medium">Usuarios registrados:</p>
             <div id="lista-usuarios-global" class="space-y-2">
               <p class="text-gray-500 text-center py-4">Cargando usuarios...</p>
             </div>
@@ -882,6 +961,67 @@
       render();
     }
 
+    async function handleRegistro() {
+      const nombre = document.getElementById('registro-nombre').value.trim();
+      const email = document.getElementById('registro-email').value.trim();
+      const telefono = document.getElementById('registro-telefono').value.trim();
+      const password = document.getElementById('registro-password').value;
+      const password2 = document.getElementById('registro-password2').value;
+      
+      const errorDiv = document.getElementById('registro-error');
+      const successDiv = document.getElementById('registro-success');
+      const formDiv = document.getElementById('registro-form');
+      
+      errorDiv.classList.add('hidden');
+      successDiv.classList.add('hidden');
+      
+      if (!nombre || !email || !password) {
+        errorDiv.textContent = 'Nombre, email y contraseña son obligatorios';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      
+      if (password.length < 6) {
+        errorDiv.textContent = 'La contraseña debe tener al menos 6 caracteres';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      
+      if (password !== password2) {
+        errorDiv.textContent = 'Las contraseñas no coinciden';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      
+      try {
+        const res = await fetch('/api/registro', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, email, telefono, password })
+        });
+        
+        const data = await res.json();
+        
+        if (data.error) {
+          errorDiv.textContent = data.error;
+          errorDiv.classList.remove('hidden');
+        } else {
+          formDiv.classList.add('hidden');
+          successDiv.innerHTML = `
+            <p class="font-bold mb-2">✅ ¡Cuenta creada exitosamente!</p>
+            <p class="text-sm">Tu cuenta ha sido registrada. El administrador debe asignarte a un proyecto para que puedas acceder.</p>
+            <button onclick="state.view='login'; render()" class="mt-3 w-full bg-green-600 text-white py-2 rounded font-semibold">
+              Ir a iniciar sesión
+            </button>
+          `;
+          successDiv.classList.remove('hidden');
+        }
+      } catch (e) {
+        errorDiv.textContent = 'Error de conexión. Intenta de nuevo.';
+        errorDiv.classList.remove('hidden');
+      }
+    }
+
     async function handleCrearProyecto() {
       const nombre = document.getElementById('proyecto-nombre').value;
       const ubicacion = document.getElementById('proyecto-ubicacion').value;
@@ -932,18 +1072,27 @@
       const container = document.getElementById('lista-usuarios-global');
       if (container) {
         container.innerHTML = usuarios.map(u => `
-          <div class="bg-white p-3 rounded-xl shadow flex items-center justify-between">
-            <div>
-              <p class="font-semibold">${u.nombre} ${u.es_superadmin ? '👑' : ''}</p>
-              <p class="text-xs text-gray-500">${u.email}</p>
+          <div class="bg-white p-3 rounded-xl shadow">
+            <div class="flex items-center justify-between">
+              <div class="flex-1">
+                <div class="flex items-center">
+                  <span class="text-lg mr-2">${u.es_superadmin ? '👑' : '👤'}</span>
+                  <div>
+                    <p class="font-semibold">${u.nombre}</p>
+                    <p class="text-xs text-gray-500">${u.email}</p>
+                  </div>
+                </div>
+                ${u.es_superadmin ? '<span class="inline-block mt-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">Superadmin</span>' : ''}
+                ${u.temp_password ? '<span class="inline-block mt-1 ml-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">Contraseña temporal</span>' : ''}
+              </div>
+              ${u.id !== state.user.id ? `
+                <button onclick="handleEliminarUsuarioGlobal(${u.id})" class="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Eliminar usuario">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </button>
+              ` : '<span class="text-xs text-gray-400 px-2">Tú</span>'}
             </div>
-            ${u.id !== state.user.id ? `
-              <button onclick="handleEliminarUsuarioGlobal(${u.id})" class="p-1 bg-red-100 text-red-600 rounded">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                </svg>
-              </button>
-            ` : ''}
           </div>
         `).join('');
       }
@@ -1176,6 +1325,8 @@
         app.innerHTML = renderLoading();
       } else if (state.view === 'login') {
         app.innerHTML = renderLogin();
+      } else if (state.view === 'registro') {
+        app.innerHTML = renderRegistro();
       } else if (state.view === 'change-password') {
         app.innerHTML = renderChangePassword();
       } else if (state.view === 'proyectos') {
