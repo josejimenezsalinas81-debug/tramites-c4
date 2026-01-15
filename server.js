@@ -715,6 +715,30 @@ app.delete('/api/usuarios/:id', verificarToken, async (req, res) => {
   }
 });
 
+// Obtener proyectos asignados a un usuario específico
+app.get('/api/usuarios/:id/proyectos', verificarToken, async (req, res) => {
+  if (!req.user.es_superadmin) {
+    return res.status(403).json({ error: 'No autorizado' });
+  }
+
+  const { id } = req.params;
+  const client = await pool.connect();
+
+  try {
+    const result = await client.query(`
+      SELECT p.id, p.nombre, pu.rol 
+      FROM proyecto_usuarios pu
+      JOIN proyectos p ON pu.proyecto_id = p.id
+      WHERE pu.usuario_id = $1 AND p.activo = true
+      ORDER BY p.nombre
+    `, [id]);
+    
+    res.json(result.rows);
+  } finally {
+    client.release();
+  }
+});
+
 // ==================== TRÁMITES DE PROYECTO ====================
 
 // Obtener datos de trámites de un proyecto
