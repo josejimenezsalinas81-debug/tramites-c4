@@ -1366,7 +1366,7 @@
                       </svg>
                     </button>
                   ` : ''}
-                  <button onclick="descargarArchivo(${a.id}, this)" class="p-1.5 bg-blue-100 text-blue-600 rounded" title="Descargar">
+                  <button onclick="descargarArchivo(${a.id})" class="p-1.5 bg-blue-100 text-blue-600 rounded" title="Descargar">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                     </svg>
@@ -1408,9 +1408,9 @@
           return;
         }
         
-        // Límite de 500MB
-        if (file.size > 500 * 1024 * 1024) {
-          alert('El archivo es muy grande. Máximo 500MB');
+        // Límite de 100MB
+        if (file.size > 100 * 1024 * 1024) {
+          alert('El archivo es muy grande. Máximo 100MB');
           return;
         }
         
@@ -1454,51 +1454,53 @@
       input.click();
     }
 
-    // Variable global para almacenar archivo actual
-    let archivoActual = null;
-
-    async function descargarArchivo(id, btn) {
-      // Mostrar cargando
-      const originalHTML = btn.innerHTML;
-      btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
-      btn.disabled = true;
+    // Descargar archivo - usa descarga directa del servidor
+    function descargarArchivo(id) {
+      // Crear enlace de descarga directa
+      const token = state.token;
+      const url = `/api/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`;
       
-      try {
-        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
-        if (res.error) { 
-          alert(res.error); 
-          return; 
+      // Usar fetch con el token
+      fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(response => {
+        if (!response.ok) throw new Error('Error al descargar');
+        
+        // Obtener nombre del archivo del header
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'archivo';
+        if (disposition) {
+          const match = disposition.match(/filename="(.+)"/);
+          if (match) filename = decodeURIComponent(match[1]);
         }
         
-        // Convertir base64 a blob de manera más eficiente
-        const byteString = atob(res.contenido);
-        const arrayBuffer = new ArrayBuffer(byteString.length);
-        const uint8Array = new Uint8Array(arrayBuffer);
-        for (let i = 0; i < byteString.length; i++) {
-          uint8Array[i] = byteString.charCodeAt(i);
-        }
-        const blob = new Blob([uint8Array], { type: res.tipo_archivo });
-        
-        // Descargar
+        return response.blob().then(blob => ({ blob, filename }));
+      })
+      .then(({ blob, filename }) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = res.nombre_archivo;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        
-        // Limpiar después de un momento
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } catch (err) {
+        URL.revokeObjectURL(url);
+      })
+      .catch(err => {
+        console.error(err);
         alert('Error al descargar. Intenta de nuevo.');
-      } finally {
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
-      }
+      });
     }
 
+    // Variable para almacenar archivo actual en visor
+    let archivoActualId = null;
+    let archivoActualNombre = null;
+
     async function verArchivo(id, nombre) {
+      archivoActualId = id;
+      archivoActualNombre = nombre;
+      
       // Crear modal de visualización
       const modal = document.createElement('div');
       modal.id = 'modal-visor';
@@ -1512,7 +1514,7 @@
             <button onclick="cerrarVisor()" class="px-3 py-1 bg-gray-500 text-white rounded text-sm">Cerrar</button>
           </div>
         </div>
-        <div class="flex-1 bg-gray-200 flex items-center justify-center">
+        <div id="visor-contenido" class="flex-1 bg-gray-200 flex items-center justify-center">
           <div class="text-center">
             <div class="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
             <p class="text-gray-600">Cargando documento...</p>
@@ -1523,18 +1525,16 @@
       document.body.style.overflow = 'hidden';
       
       try {
-        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
+        // Usar endpoint /ver/ que devuelve JSON
+        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/ver/${id}`);
         if (res.error) {
           alert(res.error);
           cerrarVisor();
           return;
         }
         
-        // Guardar para compartir/descargar
-        archivoActual = res;
-        
-        // Mostrar PDF
-        const pdfViewer = modal.querySelector('.flex-1');
+        // Mostrar PDF en iframe
+        const pdfViewer = document.getElementById('visor-contenido');
         pdfViewer.innerHTML = `
           <iframe src="data:application/pdf;base64,${res.contenido}" 
             class="w-full h-full" style="min-height: 80vh;"></iframe>
@@ -1549,108 +1549,60 @@
       const modal = document.getElementById('modal-visor');
       if (modal) modal.remove();
       document.body.style.overflow = '';
-      archivoActual = null;
+      archivoActualId = null;
+      archivoActualNombre = null;
     }
 
     function descargarDesdeVisor() {
-      if (!archivoActual) return;
-      
-      const byteString = atob(archivoActual.contenido);
-      const arrayBuffer = new ArrayBuffer(byteString.length);
-      const uint8Array = new Uint8Array(arrayBuffer);
-      for (let i = 0; i < byteString.length; i++) {
-        uint8Array[i] = byteString.charCodeAt(i);
-      }
-      const blob = new Blob([uint8Array], { type: archivoActual.tipo_archivo });
-      
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = archivoActual.nombre_archivo;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    async function compartirDesdeVisor() {
-      if (!archivoActual) return;
-      await compartirArchivoBlob(archivoActual);
-    }
-
-    async function compartirArchivo(id, nombre) {
-      try {
-        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
-        if (res.error) {
-          alert(res.error);
-          return;
-        }
-        await compartirArchivoBlob(res);
-      } catch (err) {
-        alert('Error al preparar el archivo para compartir');
+      if (archivoActualId) {
+        descargarArchivo(archivoActualId);
       }
     }
 
-    async function compartirArchivoBlob(archivo) {
-      // Convertir a blob
-      const byteString = atob(archivo.contenido);
-      const arrayBuffer = new ArrayBuffer(byteString.length);
-      const uint8Array = new Uint8Array(arrayBuffer);
-      for (let i = 0; i < byteString.length; i++) {
-        uint8Array[i] = byteString.charCodeAt(i);
-      }
-      const blob = new Blob([uint8Array], { type: archivo.tipo_archivo });
-      const file = new File([blob], archivo.nombre_archivo, { type: archivo.tipo_archivo });
-      
-      // Verificar si el navegador soporta Web Share API
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            title: archivo.nombre_archivo,
-            text: `Documento: ${archivo.nombre_archivo}`,
-            files: [file]
-          });
-        } catch (err) {
-          if (err.name !== 'AbortError') {
-            mostrarOpcionesCompartir(archivo);
-          }
-        }
-      } else {
-        // Fallback: mostrar opciones manuales
-        mostrarOpcionesCompartir(archivo);
+    function compartirDesdeVisor() {
+      if (archivoActualId && archivoActualNombre) {
+        mostrarOpcionesCompartir(archivoActualNombre);
       }
     }
 
-    function mostrarOpcionesCompartir(archivo) {
+    function compartirArchivo(id, nombre) {
+      mostrarOpcionesCompartir(nombre);
+    }
+
+    function mostrarOpcionesCompartir(nombreArchivo) {
       const modal = document.createElement('div');
       modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
       modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
       
+      const mensaje = encodeURIComponent(`Te comparto el documento: ${nombreArchivo}`);
+      
       modal.innerHTML = `
         <div class="bg-white rounded-xl p-4 w-full max-w-sm">
-          <h3 class="font-bold text-lg mb-4 text-center">📤 Compartir archivo</h3>
-          <p class="text-sm text-gray-600 text-center mb-4">${archivo.nombre_archivo}</p>
+          <h3 class="font-bold text-lg mb-4 text-center">📤 Compartir</h3>
+          <p class="text-sm text-gray-600 text-center mb-4 truncate">${nombreArchivo}</p>
           
           <div class="space-y-2">
-            <a href="https://wa.me/?text=${encodeURIComponent('Te comparto este documento: ' + archivo.nombre_archivo)}" 
-              target="_blank" class="flex items-center p-3 bg-green-500 text-white rounded-lg hover:bg-green-600">
+            <a href="https://wa.me/?text=${mensaje}" target="_blank" 
+              class="flex items-center p-3 bg-green-500 text-white rounded-lg hover:bg-green-600">
               <span class="text-xl mr-3">💬</span>
               <span class="font-medium">WhatsApp</span>
             </a>
             
-            <a href="mailto:?subject=${encodeURIComponent('Documento: ' + archivo.nombre_archivo)}&body=${encodeURIComponent('Te comparto este documento.')}" 
+            <a href="mailto:?subject=Documento: ${encodeURIComponent(nombreArchivo)}&body=${mensaje}" 
               class="flex items-center p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
               <span class="text-xl mr-3">📧</span>
               <span class="font-medium">Correo electrónico</span>
             </a>
             
-            <button onclick="copiarNombreArchivo('${archivo.nombre_archivo.replace(/'/g, "\\'")}')" 
-              class="flex items-center p-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 w-full">
-              <span class="text-xl mr-3">📋</span>
-              <span class="font-medium">Copiar nombre</span>
-            </button>
+            <a href="https://t.me/share/url?text=${mensaje}" target="_blank"
+              class="flex items-center p-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600">
+              <span class="text-xl mr-3">✈️</span>
+              <span class="font-medium">Telegram</span>
+            </a>
           </div>
           
           <p class="text-xs text-gray-400 text-center mt-4">
-            💡 Descarga el archivo primero y luego adjúntalo en tu app de mensajería
+            💡 Primero descarga el archivo, luego adjúntalo al compartir
           </p>
           
           <button onclick="this.closest('.fixed').remove()" 
@@ -1661,14 +1613,6 @@
       `;
       
       document.body.appendChild(modal);
-    }
-
-    function copiarNombreArchivo(nombre) {
-      navigator.clipboard.writeText(nombre).then(() => {
-        alert('✅ Nombre copiado al portapapeles');
-      }).catch(() => {
-        alert('No se pudo copiar');
-      });
     }
 
     async function eliminarArchivo(id, tramiteId, requisito, containerId) {
