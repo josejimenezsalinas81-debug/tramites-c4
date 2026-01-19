@@ -643,7 +643,7 @@
       const sel = options.find(o => o.value === value) || { bg: 'bg-gray-300' };
       return `
         <select id="${id}" ${disabled ? 'disabled' : ''} 
-          onchange="actualizarAvanceEnTiempoReal(${tramiteId}, '${requisito}', ${idx})"
+          onchange="actualizarYGuardar(${tramiteId}, '${requisito}', ${idx})"
           class="w-full p-1.5 rounded text-xs text-white font-medium ${sel.bg} ${disabled ? 'opacity-50' : ''} appearance-none pr-6">
           <option value="">Seleccionar</option>
           ${options.map(o => `<option value="${o.value}" ${value === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
@@ -710,6 +710,7 @@
             <div>
               <span class="text-gray-500">Costo Trám.</span>
               <input type="number" id="req-${tramiteId}-${idx}-costoT" value="${data.costoTramite || ''}" 
+                onchange="autoGuardarRequisito(${tramiteId}, '${reqEscaped}', ${idx})"
                 ${!canEdit ? 'disabled' : ''} class="w-full p-1.5 rounded border text-xs ${!canEdit ? 'bg-gray-100' : ''}" placeholder="$0">
             </div>
             <div>
@@ -719,6 +720,7 @@
             <div>
               <span class="text-gray-500">Costo Gest.</span>
               <input type="number" id="req-${tramiteId}-${idx}-costoG" value="${data.costoGestor || ''}" 
+                onchange="autoGuardarRequisito(${tramiteId}, '${reqEscaped}', ${idx})"
                 ${!canEdit ? 'disabled' : ''} class="w-full p-1.5 rounded border text-xs ${!canEdit ? 'bg-gray-100' : ''}" placeholder="$0">
             </div>
             <div>
@@ -737,7 +739,7 @@
                 Archivos
               </span>
               ${isAdmin ? `
-                <button onclick="subirArchivo(${tramiteId}, '${reqEscaped}', '${archivosContainerId}')" 
+                <button onclick="subirArchivo(${tramiteId}, '${reqEscaped}', '${archivosContainerId}', ${idx})" 
                   class="flex items-center px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                   <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
@@ -751,8 +753,8 @@
             </div>
           </div>
           
-          ${canEdit ? `<button onclick="guardarRequisito(${tramiteId}, '${reqEscaped}', ${idx})" 
-            class="mt-3 w-full bg-blue-500 text-white py-1.5 rounded text-xs font-medium">Guardar</button>` : ''}
+          ${canEdit ? `<div id="btn-guardar-${tramiteId}-${idx}" 
+            class="mt-3 w-full bg-gray-400 text-white py-1.5 rounded text-xs font-medium text-center cursor-default">✓ Auto-guardado activo</div>` : ''}
         </div>
       `;
     }
@@ -1376,59 +1378,86 @@
       render();
     }
 
-    async function guardarRequisito(tramiteId, requisito, idx) {
-      try {
-        const estadoEl = document.getElementById(`req-${tramiteId}-${idx}-estado`);
-        const vigenciaEl = document.getElementById(`req-${tramiteId}-${idx}-vigencia`);
-        const costoTEl = document.getElementById(`req-${tramiteId}-${idx}-costoT`);
-        const pagoTEl = document.getElementById(`req-${tramiteId}-${idx}-pagoT`);
-        const costoGEl = document.getElementById(`req-${tramiteId}-${idx}-costoG`);
-        const pagoGEl = document.getElementById(`req-${tramiteId}-${idx}-pagoG`);
-        
-        if (!estadoEl || !vigenciaEl || !pagoTEl || !pagoGEl) {
-          alert('Error: No se encontraron los campos');
-          return;
-        }
-        
-        const datos = {
-          estadoDoc: estadoEl.value || '',
-          vigencia: vigenciaEl.value || '',
-          costoTramite: parseFloat(costoTEl?.value) || 0,
-          pagoTramite: pagoTEl.value || '',
-          costoGestor: parseFloat(costoGEl?.value) || 0,
-          pagoGestor: pagoGEl.value || ''
-        };
-        
-        // Calcular avance automáticamente
-        const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) > 0;
-        datos.avance = calcularAvanceRequisito(datos, tieneArchivos) / 100;
-        
-        console.log('Guardando:', { tramiteId, requisito, datos });
-        
-        const res = await api(`/proyectos/${state.proyectoActual.id}/tramites/${tramiteId}/requisitos`, {
-          method: 'POST',
-          body: { requisito, datos }
-        });
-        
-        if (res.error) {
-          alert('Error al guardar: ' + res.error);
-          return;
-        }
-        
-        // Actualizar estado local
-        if (!state.tramitesData[tramiteId]) state.tramitesData[tramiteId] = { requisitos: {} };
-        state.tramitesData[tramiteId].requisitos[requisito] = datos;
-        
-        alert('✅ Guardado correctamente');
-        render();
-      } catch (err) {
-        console.error('Error guardando:', err);
-        alert('Error al guardar. Revisa la conexión.');
+    // Auto-guardar requisito (con debounce para evitar muchas llamadas)
+    let guardandoTimeout = {};
+    
+    async function autoGuardarRequisito(tramiteId, requisito, idx) {
+      // Cancelar guardado anterior si existe
+      const key = `${tramiteId}-${requisito}`;
+      if (guardandoTimeout[key]) {
+        clearTimeout(guardandoTimeout[key]);
       }
+      
+      // Mostrar indicador de guardando
+      const btnGuardar = document.getElementById(`btn-guardar-${tramiteId}-${idx}`);
+      if (btnGuardar) {
+        btnGuardar.innerHTML = '⏳ Guardando...';
+        btnGuardar.className = 'mt-3 w-full bg-yellow-500 text-white py-1.5 rounded text-xs font-medium';
+      }
+      
+      // Esperar 500ms antes de guardar (debounce)
+      guardandoTimeout[key] = setTimeout(async () => {
+        try {
+          const estadoEl = document.getElementById(`req-${tramiteId}-${idx}-estado`);
+          const vigenciaEl = document.getElementById(`req-${tramiteId}-${idx}-vigencia`);
+          const costoTEl = document.getElementById(`req-${tramiteId}-${idx}-costoT`);
+          const pagoTEl = document.getElementById(`req-${tramiteId}-${idx}-pagoT`);
+          const costoGEl = document.getElementById(`req-${tramiteId}-${idx}-costoG`);
+          const pagoGEl = document.getElementById(`req-${tramiteId}-${idx}-pagoG`);
+          
+          if (!estadoEl || !vigenciaEl || !pagoTEl || !pagoGEl) {
+            console.log('Campos no encontrados');
+            return;
+          }
+          
+          const datos = {
+            estadoDoc: estadoEl.value || '',
+            vigencia: vigenciaEl.value || '',
+            costoTramite: parseFloat(costoTEl?.value) || 0,
+            pagoTramite: pagoTEl.value || '',
+            costoGestor: parseFloat(costoGEl?.value) || 0,
+            pagoGestor: pagoGEl.value || ''
+          };
+          
+          // Calcular avance automáticamente
+          const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) > 0;
+          datos.avance = calcularAvanceRequisito(datos, tieneArchivos) / 100;
+          
+          const res = await api(`/proyectos/${state.proyectoActual.id}/tramites/${tramiteId}/requisitos`, {
+            method: 'POST',
+            body: { requisito, datos }
+          });
+          
+          // Actualizar estado local
+          if (!state.tramitesData[tramiteId]) state.tramitesData[tramiteId] = { requisitos: {} };
+          state.tramitesData[tramiteId].requisitos[requisito] = datos;
+          
+          // Mostrar éxito
+          if (btnGuardar) {
+            btnGuardar.innerHTML = '✓ Guardado';
+            btnGuardar.className = 'mt-3 w-full bg-green-500 text-white py-1.5 rounded text-xs font-medium';
+            
+            // Volver al estado normal después de 2 segundos
+            setTimeout(() => {
+              if (btnGuardar) {
+                btnGuardar.innerHTML = '✓ Auto-guardado activo';
+                btnGuardar.className = 'mt-3 w-full bg-gray-400 text-white py-1.5 rounded text-xs font-medium cursor-default';
+              }
+            }, 2000);
+          }
+          
+        } catch (err) {
+          console.error('Error guardando:', err);
+          if (btnGuardar) {
+            btnGuardar.innerHTML = '⚠️ Error al guardar';
+            btnGuardar.className = 'mt-3 w-full bg-red-500 text-white py-1.5 rounded text-xs font-medium';
+          }
+        }
+      }, 500);
     }
     
-    // Actualizar avance en tiempo real al cambiar opciones
-    function actualizarAvanceEnTiempoReal(tramiteId, requisito, idx) {
+    // Actualizar avance en tiempo real y auto-guardar
+    function actualizarYGuardar(tramiteId, requisito, idx) {
       const estadoEl = document.getElementById(`req-${tramiteId}-${idx}-estado`);
       const vigenciaEl = document.getElementById(`req-${tramiteId}-${idx}-vigencia`);
       const pagoTEl = document.getElementById(`req-${tramiteId}-${idx}-pagoT`);
@@ -1436,7 +1465,7 @@
       const avanceEl = document.getElementById(`avance-${tramiteId}-${idx}`);
       const barraEl = document.getElementById(`barra-${tramiteId}-${idx}`);
       
-      if (!estadoEl || !vigenciaEl || !pagoTEl || !pagoGEl || !avanceEl || !barraEl) return;
+      if (!estadoEl || !vigenciaEl || !pagoTEl || !pagoGEl) return;
       
       const datos = {
         estadoDoc: estadoEl.value,
@@ -1448,35 +1477,43 @@
       const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) > 0;
       const avance = calcularAvanceRequisito(datos, tieneArchivos);
       
-      // Actualizar texto
-      avanceEl.textContent = avance + '%';
-      avanceEl.className = `font-bold ${avance === 100 ? 'text-green-600' : avance >= 60 ? 'text-yellow-600' : 'text-red-500'}`;
+      // Actualizar texto y barra
+      if (avanceEl) {
+        avanceEl.textContent = avance + '%';
+        avanceEl.className = `font-bold ${avance === 100 ? 'text-green-600' : avance >= 60 ? 'text-yellow-600' : 'text-red-500'}`;
+      }
       
-      // Actualizar barra
-      const barColor = avance === 100 ? 'bg-green-500' : avance >= 60 ? 'bg-yellow-500' : 'bg-red-400';
-      barraEl.style.width = avance + '%';
-      barraEl.className = `h-2 ${barColor} rounded-full transition-all`;
+      if (barraEl) {
+        const barColor = avance === 100 ? 'bg-green-500' : avance >= 60 ? 'bg-yellow-500' : 'bg-red-400';
+        barraEl.style.width = avance + '%';
+        barraEl.className = `h-2 ${barColor} rounded-full transition-all`;
+      }
       
       // Actualizar indicadores
-      document.getElementById(`ind-estado-${tramiteId}-${idx}`).className = 
-        `px-2 py-0.5 rounded ${datos.estadoDoc === 'tenemos' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
-      document.getElementById(`ind-estado-${tramiteId}-${idx}`).innerHTML = 
-        `${datos.estadoDoc === 'tenemos' ? '✓' : '○'} Estado`;
-        
-      document.getElementById(`ind-vigencia-${tramiteId}-${idx}`).className = 
-        `px-2 py-0.5 rounded ${datos.vigencia === 'vigente' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
-      document.getElementById(`ind-vigencia-${tramiteId}-${idx}`).innerHTML = 
-        `${datos.vigencia === 'vigente' ? '✓' : '○'} Vigencia`;
-        
-      document.getElementById(`ind-pagoT-${tramiteId}-${idx}`).className = 
-        `px-2 py-0.5 rounded ${datos.pagoTramite === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
-      document.getElementById(`ind-pagoT-${tramiteId}-${idx}`).innerHTML = 
-        `${datos.pagoTramite === 'pagado' ? '✓' : '○'} Pago Trám`;
-        
-      document.getElementById(`ind-pagoG-${tramiteId}-${idx}`).className = 
-        `px-2 py-0.5 rounded ${datos.pagoGestor === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
-      document.getElementById(`ind-pagoG-${tramiteId}-${idx}`).innerHTML = 
-        `${datos.pagoGestor === 'pagado' ? '✓' : '○'} Pago Gest`;
+      const indEstado = document.getElementById(`ind-estado-${tramiteId}-${idx}`);
+      const indVigencia = document.getElementById(`ind-vigencia-${tramiteId}-${idx}`);
+      const indPagoT = document.getElementById(`ind-pagoT-${tramiteId}-${idx}`);
+      const indPagoG = document.getElementById(`ind-pagoG-${tramiteId}-${idx}`);
+      
+      if (indEstado) {
+        indEstado.className = `px-2 py-0.5 rounded ${datos.estadoDoc === 'tenemos' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+        indEstado.innerHTML = `${datos.estadoDoc === 'tenemos' ? '✓' : '○'} Estado`;
+      }
+      if (indVigencia) {
+        indVigencia.className = `px-2 py-0.5 rounded ${datos.vigencia === 'vigente' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+        indVigencia.innerHTML = `${datos.vigencia === 'vigente' ? '✓' : '○'} Vigencia`;
+      }
+      if (indPagoT) {
+        indPagoT.className = `px-2 py-0.5 rounded ${datos.pagoTramite === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+        indPagoT.innerHTML = `${datos.pagoTramite === 'pagado' ? '✓' : '○'} Pago Trám`;
+      }
+      if (indPagoG) {
+        indPagoG.className = `px-2 py-0.5 rounded ${datos.pagoGestor === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+        indPagoG.innerHTML = `${datos.pagoGestor === 'pagado' ? '✓' : '○'} Pago Gest`;
+      }
+      
+      // Auto-guardar
+      autoGuardarRequisito(tramiteId, requisito, idx);
     }
 
     // ==================== ARCHIVOS ====================
@@ -1531,7 +1568,7 @@
       }
     }
 
-    async function subirArchivo(tramiteId, requisito, containerId) {
+    async function subirArchivo(tramiteId, requisito, containerId, idx) {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.pdf,.doc,.docx';
@@ -1575,9 +1612,21 @@
             } else {
               // Actualizar contador de archivos
               state.archivosRequisito[`${tramiteId}-${requisito}`] = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) + 1;
+              
+              // Auto-guardar el requisito con el nuevo avance
+              autoGuardarRequisito(tramiteId, requisito, idx);
+              
               cargarArchivosRequisito(tramiteId, requisito, containerId);
-              // Re-renderizar para actualizar el avance
-              render();
+              
+              // Actualizar indicador de archivo
+              const indArchivo = document.getElementById(`ind-archivo-${tramiteId}-${idx}`);
+              if (indArchivo) {
+                indArchivo.className = 'px-2 py-0.5 rounded bg-green-100 text-green-700';
+                indArchivo.innerHTML = '✓ Archivo';
+              }
+              
+              // Actualizar avance visual
+              actualizarYGuardar(tramiteId, requisito, idx);
             }
           } catch (err) {
             alert('Error al subir');
@@ -1665,9 +1714,24 @@
         state.archivosRequisito[`${tramiteId}-${requisito}`]--;
       }
       
+      // Extraer idx del containerId (formato: archivos-tramiteId-idx)
+      const idx = parseInt(containerId.split('-').pop());
+      
+      // Auto-guardar con el nuevo avance
+      autoGuardarRequisito(tramiteId, requisito, idx);
+      
       cargarArchivosRequisito(tramiteId, requisito, containerId);
-      // Re-renderizar para actualizar el avance
-      render();
+      
+      // Actualizar indicador de archivo si ya no hay archivos
+      const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) > 0;
+      const indArchivo = document.getElementById(`ind-archivo-${tramiteId}-${idx}`);
+      if (indArchivo) {
+        indArchivo.className = `px-2 py-0.5 rounded ${tieneArchivos ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+        indArchivo.innerHTML = `${tieneArchivos ? '✓' : '○'} Archivo`;
+      }
+      
+      // Actualizar avance visual
+      actualizarYGuardar(tramiteId, requisito, idx);
     }
 
     // ==================== RENDER ====================
@@ -1702,4 +1766,3 @@
   </script>
 </body>
 </html>
-
