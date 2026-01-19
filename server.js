@@ -864,32 +864,7 @@ app.post('/api/proyectos/:proyectoId/archivos', verificarToken, async (req, res)
   }
 });
 
-// Listar archivos
-app.get('/api/proyectos/:proyectoId/archivos/:tramiteId/:requisito', verificarToken, async (req, res) => {
-  const { proyectoId, tramiteId, requisito } = req.params;
-  const client = await pool.connect();
-
-  try {
-    const permiso = await verificarPermisoProyecto(req.user.id, proyectoId, ['admin', 'editor', 'viewer'], client);
-    if (!permiso.permitido) {
-      return res.status(403).json({ error: 'No tienes acceso' });
-    }
-
-    const result = await client.query(
-      `SELECT a.id, a.nombre_archivo, a.tipo_archivo, a.tamanio, a.fecha_subida, u.nombre as subido_por_nombre
-       FROM archivos a
-       LEFT JOIN usuarios u ON a.subido_por = u.id
-       WHERE a.proyecto_id = $1 AND a.tramite_id = $2 AND a.requisito = $3
-       ORDER BY a.fecha_subida DESC`,
-      [proyectoId, tramiteId, requisito]
-    );
-
-    res.json(result.rows);
-  } finally {
-    client.release();
-  }
-});
-
+// IMPORTANTE: Esta ruta debe ir ANTES de /:tramiteId/:requisito
 // Descargar/Ver archivo - devuelve JSON con contenido
 app.get('/api/proyectos/:proyectoId/archivos/descargar/:id', verificarToken, async (req, res) => {
   const { proyectoId, id } = req.params;
@@ -914,6 +889,32 @@ app.get('/api/proyectos/:proyectoId/archivos/descargar/:id', verificarToken, asy
   } catch (error) {
     console.error('Error al descargar:', error);
     res.status(500).json({ error: 'Error al descargar el archivo' });
+  } finally {
+    client.release();
+  }
+});
+
+// Listar archivos de un requisito
+app.get('/api/proyectos/:proyectoId/archivos/:tramiteId/:requisito', verificarToken, async (req, res) => {
+  const { proyectoId, tramiteId, requisito } = req.params;
+  const client = await pool.connect();
+
+  try {
+    const permiso = await verificarPermisoProyecto(req.user.id, proyectoId, ['admin', 'editor', 'viewer'], client);
+    if (!permiso.permitido) {
+      return res.status(403).json({ error: 'No tienes acceso' });
+    }
+
+    const result = await client.query(
+      `SELECT a.id, a.nombre_archivo, a.tipo_archivo, a.tamanio, a.fecha_subida, u.nombre as subido_por_nombre
+       FROM archivos a
+       LEFT JOIN usuarios u ON a.subido_por = u.id
+       WHERE a.proyecto_id = $1 AND a.tramite_id = $2 AND a.requisito = $3
+       ORDER BY a.fecha_subida DESC`,
+      [proyectoId, tramiteId, requisito]
+    );
+
+    res.json(result.rows);
   } finally {
     client.release();
   }
