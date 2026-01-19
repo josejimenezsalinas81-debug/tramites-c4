@@ -890,47 +890,8 @@ app.get('/api/proyectos/:proyectoId/archivos/:tramiteId/:requisito', verificarTo
   }
 });
 
-// Descargar archivo - envía el archivo directamente
+// Descargar/Ver archivo - devuelve JSON con contenido
 app.get('/api/proyectos/:proyectoId/archivos/descargar/:id', verificarToken, async (req, res) => {
-  const { proyectoId, id } = req.params;
-  const client = await pool.connect();
-
-  try {
-    const permiso = await verificarPermisoProyecto(req.user.id, proyectoId, ['admin', 'editor', 'viewer'], client);
-    if (!permiso.permitido) {
-      return res.status(403).json({ error: 'No tienes acceso' });
-    }
-
-    const result = await client.query(
-      'SELECT nombre_archivo, tipo_archivo, contenido FROM archivos WHERE id = $1 AND proyecto_id = $2',
-      [id, proyectoId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
-    }
-
-    const archivo = result.rows[0];
-    
-    // Convertir base64 a buffer
-    const buffer = Buffer.from(archivo.contenido, 'base64');
-    
-    // Enviar como archivo descargable
-    res.setHeader('Content-Type', archivo.tipo_archivo);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(archivo.nombre_archivo)}"`);
-    res.setHeader('Content-Length', buffer.length);
-    res.send(buffer);
-    
-  } catch (error) {
-    console.error('Error al descargar:', error);
-    res.status(500).json({ error: 'Error al descargar el archivo' });
-  } finally {
-    client.release();
-  }
-});
-
-// Ver archivo (para el visor de PDF) - devuelve JSON con el contenido
-app.get('/api/proyectos/:proyectoId/archivos/ver/:id', verificarToken, async (req, res) => {
   const { proyectoId, id } = req.params;
   const client = await pool.connect();
 
@@ -951,8 +912,8 @@ app.get('/api/proyectos/:proyectoId/archivos/ver/:id', verificarToken, async (re
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error al ver archivo:', error);
-    res.status(500).json({ error: 'Error al cargar el archivo' });
+    console.error('Error al descargar:', error);
+    res.status(500).json({ error: 'Error al descargar el archivo' });
   } finally {
     client.release();
   }
