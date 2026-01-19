@@ -961,9 +961,8 @@ initDB().then(() => {
     console.log('╠════════════════════════════════════════════════════════════╣');
     console.log(`║   🌐 Servidor corriendo en puerto ${PORT}                    ║`);
     console.log('║                                                            ║');
-    console.log('║   👤 Usuarios superadmin:                                  ║');
-    console.log('║      1. superadmin@empresa.com / 1234                      ║');
-    console.log('║      2. josejimenezsalinas81@gmail.com                     ║');
+    console.log('║   👑 Administrador:                                        ║');
+    console.log('║      josejimenezsalinas81@gmail.com                        ║');
     console.log('╚════════════════════════════════════════════════════════════╝');
     console.log('');
   });
