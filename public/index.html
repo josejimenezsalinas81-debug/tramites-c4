@@ -1359,19 +1359,19 @@
                 </div>
                 <div class="flex gap-1 ml-2">
                   ${esPDF ? `
-                    <button onclick="verArchivo(${a.id}, '${a.nombre_archivo.replace(/'/g, "\\'")}')" class="p-1.5 bg-purple-100 text-purple-600 rounded" title="Ver">
+                    <button onclick="verArchivoPDF(${a.id}, '${a.nombre_archivo.replace(/'/g, "\\'")}')" class="p-1.5 bg-purple-100 text-purple-600 rounded" title="Ver PDF">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                       </svg>
                     </button>
                   ` : ''}
-                  <button onclick="descargarArchivo(${a.id})" class="p-1.5 bg-blue-100 text-blue-600 rounded" title="Descargar">
+                  <button onclick="descargarArchivoSimple(${a.id})" class="p-1.5 bg-blue-100 text-blue-600 rounded" title="Descargar">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                     </svg>
                   </button>
-                  <button onclick="compartirArchivo(${a.id}, '${a.nombre_archivo.replace(/'/g, "\\'")}')" class="p-1.5 bg-green-100 text-green-600 rounded" title="Compartir">
+                  <button onclick="mostrarCompartir('${a.nombre_archivo.replace(/'/g, "\\'")}')" class="p-1.5 bg-green-100 text-green-600 rounded" title="Compartir">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
                     </svg>
@@ -1408,20 +1408,18 @@
           return;
         }
         
-        // Límite de 100MB
         if (file.size > 100 * 1024 * 1024) {
           alert('El archivo es muy grande. Máximo 100MB');
           return;
         }
         
-        // Mostrar progreso
         const container = document.getElementById(containerId);
         const originalContent = container.innerHTML;
         container.innerHTML = `
           <div class="text-center py-4">
             <div class="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-            <p class="text-sm text-gray-600">Subiendo archivo...</p>
-            <p class="text-xs text-gray-400">${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)</p>
+            <p class="text-sm text-gray-600">Subiendo...</p>
+            <p class="text-xs text-gray-400">${file.name}</p>
           </div>
         `;
         
@@ -1441,83 +1439,74 @@
               cargarArchivosRequisito(tramiteId, requisito, containerId);
             }
           } catch (err) {
-            alert('Error al subir el archivo. Intenta de nuevo.');
+            alert('Error al subir. Intenta de nuevo.');
             container.innerHTML = originalContent;
           }
-        };
-        reader.onerror = () => {
-          alert('Error al leer el archivo');
-          container.innerHTML = originalContent;
         };
         reader.readAsDataURL(file);
       };
       input.click();
     }
 
-    // Descargar archivo - usa descarga directa del servidor
-    function descargarArchivo(id) {
-      // Crear enlace de descarga directa
-      const token = state.token;
-      const url = `/api/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`;
-      
-      // Usar fetch con el token
-      fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      .then(response => {
-        if (!response.ok) throw new Error('Error al descargar');
+    // Descargar archivo - versión simple
+    async function descargarArchivoSimple(id) {
+      try {
+        // Mostrar indicador
+        const btn = event.target.closest('button');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>';
+        btn.disabled = true;
         
-        // Obtener nombre del archivo del header
-        const disposition = response.headers.get('Content-Disposition');
-        let filename = 'archivo';
-        if (disposition) {
-          const match = disposition.match(/filename="(.+)"/);
-          if (match) filename = decodeURIComponent(match[1]);
+        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
+        
+        if (res.error) {
+          alert(res.error);
+          btn.innerHTML = originalHTML;
+          btn.disabled = false;
+          return;
         }
         
-        return response.blob().then(blob => ({ blob, filename }));
-      })
-      .then(({ blob, filename }) => {
+        // Convertir base64 a blob
+        const binary = atob(res.contenido);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: res.tipo_archivo });
+        
+        // Crear enlace de descarga
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = res.nombre_archivo;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-      })
-      .catch(err => {
+        
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+      } catch (err) {
         console.error(err);
-        alert('Error al descargar. Intenta de nuevo.');
-      });
+        alert('Error al descargar');
+      }
     }
 
-    // Variable para almacenar archivo actual en visor
-    let archivoActualId = null;
-    let archivoActualNombre = null;
-
-    async function verArchivo(id, nombre) {
-      archivoActualId = id;
-      archivoActualNombre = nombre;
-      
-      // Crear modal de visualización
+    // Ver PDF en visor
+    async function verArchivoPDF(id, nombre) {
+      // Crear modal
       const modal = document.createElement('div');
-      modal.id = 'modal-visor';
-      modal.className = 'fixed inset-0 bg-black/80 z-50 flex flex-col';
+      modal.id = 'modal-pdf';
+      modal.className = 'fixed inset-0 bg-black z-50 flex flex-col';
       modal.innerHTML = `
-        <div class="bg-white p-3 flex items-center justify-between">
-          <h3 class="font-bold text-sm truncate flex-1">${nombre}</h3>
-          <div class="flex gap-2">
-            <button onclick="compartirDesdeVisor()" class="px-3 py-1 bg-green-500 text-white rounded text-sm">Compartir</button>
-            <button onclick="descargarDesdeVisor()" class="px-3 py-1 bg-blue-500 text-white rounded text-sm">Descargar</button>
-            <button onclick="cerrarVisor()" class="px-3 py-1 bg-gray-500 text-white rounded text-sm">Cerrar</button>
-          </div>
+        <div class="bg-white p-2 flex items-center justify-between shadow">
+          <p class="font-bold text-sm truncate flex-1 mr-2">${nombre}</p>
+          <button onclick="cerrarModalPDF()" class="px-4 py-2 bg-red-500 text-white rounded text-sm font-bold">✕ Cerrar</button>
         </div>
-        <div id="visor-contenido" class="flex-1 bg-gray-200 flex items-center justify-center">
-          <div class="text-center">
-            <div class="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
-            <p class="text-gray-600">Cargando documento...</p>
+        <div id="pdf-contenido" class="flex-1 flex items-center justify-center bg-gray-800">
+          <div class="text-center text-white">
+            <div class="animate-spin w-12 h-12 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p>Cargando PDF...</p>
           </div>
         </div>
       `;
@@ -1525,88 +1514,76 @@
       document.body.style.overflow = 'hidden';
       
       try {
-        // Usar endpoint /ver/ que devuelve JSON
-        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/ver/${id}`);
+        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
+        
         if (res.error) {
           alert(res.error);
-          cerrarVisor();
+          cerrarModalPDF();
           return;
         }
         
         // Mostrar PDF en iframe
-        const pdfViewer = document.getElementById('visor-contenido');
-        pdfViewer.innerHTML = `
-          <iframe src="data:application/pdf;base64,${res.contenido}" 
-            class="w-full h-full" style="min-height: 80vh;"></iframe>
+        document.getElementById('pdf-contenido').innerHTML = `
+          <iframe 
+            src="data:application/pdf;base64,${res.contenido}#toolbar=1" 
+            class="w-full h-full"
+            style="background: white;">
+          </iframe>
         `;
       } catch (err) {
-        alert('Error al cargar el documento');
-        cerrarVisor();
+        console.error(err);
+        alert('Error al cargar el PDF');
+        cerrarModalPDF();
       }
     }
 
-    function cerrarVisor() {
-      const modal = document.getElementById('modal-visor');
+    function cerrarModalPDF() {
+      const modal = document.getElementById('modal-pdf');
       if (modal) modal.remove();
       document.body.style.overflow = '';
-      archivoActualId = null;
-      archivoActualNombre = null;
     }
 
-    function descargarDesdeVisor() {
-      if (archivoActualId) {
-        descargarArchivo(archivoActualId);
-      }
-    }
-
-    function compartirDesdeVisor() {
-      if (archivoActualId && archivoActualNombre) {
-        mostrarOpcionesCompartir(archivoActualNombre);
-      }
-    }
-
-    function compartirArchivo(id, nombre) {
-      mostrarOpcionesCompartir(nombre);
-    }
-
-    function mostrarOpcionesCompartir(nombreArchivo) {
+    // Mostrar opciones de compartir
+    function mostrarCompartir(nombreArchivo) {
+      const mensaje = `Te comparto el documento: ${nombreArchivo}`;
+      
       const modal = document.createElement('div');
       modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
       modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
       
-      const mensaje = encodeURIComponent(`Te comparto el documento: ${nombreArchivo}`);
-      
       modal.innerHTML = `
-        <div class="bg-white rounded-xl p-4 w-full max-w-sm">
-          <h3 class="font-bold text-lg mb-4 text-center">📤 Compartir</h3>
-          <p class="text-sm text-gray-600 text-center mb-4 truncate">${nombreArchivo}</p>
+        <div class="bg-white rounded-xl p-5 w-full max-w-sm">
+          <h3 class="font-bold text-lg mb-2 text-center">📤 Compartir</h3>
+          <p class="text-sm text-gray-500 text-center mb-4 truncate">${nombreArchivo}</p>
           
-          <div class="space-y-2">
-            <a href="https://wa.me/?text=${mensaje}" target="_blank" 
-              class="flex items-center p-3 bg-green-500 text-white rounded-lg hover:bg-green-600">
-              <span class="text-xl mr-3">💬</span>
-              <span class="font-medium">WhatsApp</span>
+          <div class="space-y-3">
+            <a href="https://wa.me/?text=${encodeURIComponent(mensaje)}" target="_blank" 
+              class="flex items-center p-3 bg-green-500 text-white rounded-lg">
+              <span class="text-2xl mr-3">💬</span>
+              <span class="font-bold">WhatsApp</span>
             </a>
             
-            <a href="mailto:?subject=Documento: ${encodeURIComponent(nombreArchivo)}&body=${mensaje}" 
-              class="flex items-center p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-              <span class="text-xl mr-3">📧</span>
-              <span class="font-medium">Correo electrónico</span>
+            <a href="mailto:?subject=${encodeURIComponent('Documento: ' + nombreArchivo)}&body=${encodeURIComponent(mensaje)}" 
+              class="flex items-center p-3 bg-blue-500 text-white rounded-lg">
+              <span class="text-2xl mr-3">📧</span>
+              <span class="font-bold">Correo</span>
             </a>
             
-            <a href="https://t.me/share/url?text=${mensaje}" target="_blank"
-              class="flex items-center p-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600">
-              <span class="text-xl mr-3">✈️</span>
-              <span class="font-medium">Telegram</span>
+            <a href="https://t.me/share/url?text=${encodeURIComponent(mensaje)}" target="_blank"
+              class="flex items-center p-3 bg-sky-500 text-white rounded-lg">
+              <span class="text-2xl mr-3">✈️</span>
+              <span class="font-bold">Telegram</span>
             </a>
           </div>
           
-          <p class="text-xs text-gray-400 text-center mt-4">
-            💡 Primero descarga el archivo, luego adjúntalo al compartir
-          </p>
+          <div class="mt-4 p-3 bg-yellow-50 rounded-lg">
+            <p class="text-xs text-yellow-800 text-center">
+              <strong>⚠️ Importante:</strong> Primero descarga el archivo con el botón azul ⬇️, luego adjúntalo manualmente en la app que elijas.
+            </p>
+          </div>
           
           <button onclick="this.closest('.fixed').remove()" 
-            class="mt-4 w-full py-2 bg-gray-200 rounded-lg text-gray-700 font-medium">
+            class="mt-4 w-full py-3 bg-gray-200 rounded-lg text-gray-700 font-bold">
             Cerrar
           </button>
         </div>
