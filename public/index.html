@@ -78,6 +78,7 @@
       proyectoActual: null,
       miRolEnProyecto: null,
       tramitesData: {},
+      archivosRequisito: {}, // Contador de archivos por requisito: { "tramiteId-requisito": cantidad }
       usuariosProyecto: [],
       todosUsuarios: [],
       tab: 'tramites', // tramites, resumen, usuarios, config
@@ -582,10 +583,39 @@
       return 'status-red';
     }
 
+    // Calcular avance automático de un requisito (5 criterios = 20% cada uno)
+    function calcularAvanceRequisito(data, tieneArchivos) {
+      let avance = 0;
+      
+      // 1. Estado: "tenemos" = 20%
+      if (data?.estadoDoc === 'tenemos') avance += 20;
+      
+      // 2. Vigencia: "vigente" = 20%
+      if (data?.vigencia === 'vigente') avance += 20;
+      
+      // 3. Pago trámite: "pagado" = 20%
+      if (data?.pagoTramite === 'pagado') avance += 20;
+      
+      // 4. Pago gestor: "pagado" = 20%
+      if (data?.pagoGestor === 'pagado') avance += 20;
+      
+      // 5. Tiene archivos: 20%
+      if (tieneArchivos) avance += 20;
+      
+      return avance;
+    }
+
     function calcularAvance(tramite) {
       const data = state.tramitesData[tramite.id]?.requisitos || {};
-      const avances = tramite.requisitos.map(r => data[r]?.avance || 0);
-      return avances.length ? (avances.reduce((a, b) => a + b, 0) / avances.length * 100).toFixed(0) : 0;
+      const archivos = state.archivosRequisito || {};
+      
+      let totalAvance = 0;
+      tramite.requisitos.forEach(r => {
+        const tieneArchivos = archivos[`${tramite.id}-${r}`] > 0;
+        totalAvance += calcularAvanceRequisito(data[r], tieneArchivos);
+      });
+      
+      return tramite.requisitos.length ? (totalAvance / tramite.requisitos.length).toFixed(0) : 0;
     }
 
     function calcularTotales(tramite) {
@@ -613,14 +643,48 @@
       const data = state.tramitesData[tramiteId]?.requisitos?.[req] || {};
       const canEdit = state.miRolEnProyecto === 'admin' || state.miRolEnProyecto === 'editor' || state.user?.esSuperadmin;
       const isAdmin = state.miRolEnProyecto === 'admin' || state.user?.esSuperadmin;
-      const avance = ((data.avance || 0) * 100).toFixed(0);
       const archivosContainerId = `archivos-${tramiteId}-${idx}`;
+      
+      // Calcular avance automático
+      const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${req}`] || 0) > 0;
+      const avance = calcularAvanceRequisito(data, tieneArchivos);
       
       setTimeout(() => cargarArchivosRequisito(tramiteId, req, archivosContainerId), 100);
       
+      // Determinar color de la barra según avance
+      const barColor = avance === 100 ? 'bg-green-500' : avance >= 60 ? 'bg-yellow-500' : 'bg-red-400';
+      
       return `
         <div class="bg-gray-50 p-3 rounded-lg mb-2 text-xs">
-          <p class="font-medium text-gray-700 mb-2">• ${req}</p>
+          <div class="flex items-center justify-between mb-2">
+            <p class="font-medium text-gray-700">• ${req}</p>
+            <span class="font-bold ${avance === 100 ? 'text-green-600' : avance >= 60 ? 'text-yellow-600' : 'text-red-500'}">${avance}%</span>
+          </div>
+          
+          <!-- Barra de avance -->
+          <div class="h-2 bg-gray-200 rounded-full mb-3">
+            <div class="h-2 ${barColor} rounded-full transition-all" style="width: ${avance}%"></div>
+          </div>
+          
+          <!-- Indicadores de completado -->
+          <div class="flex flex-wrap gap-1 mb-3 text-xs">
+            <span class="px-2 py-0.5 rounded ${data.estadoDoc === 'tenemos' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+              ${data.estadoDoc === 'tenemos' ? '✓' : '○'} Estado
+            </span>
+            <span class="px-2 py-0.5 rounded ${data.vigencia === 'vigente' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+              ${data.vigencia === 'vigente' ? '✓' : '○'} Vigencia
+            </span>
+            <span class="px-2 py-0.5 rounded ${data.pagoTramite === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+              ${data.pagoTramite === 'pagado' ? '✓' : '○'} Pago Trám
+            </span>
+            <span class="px-2 py-0.5 rounded ${data.pagoGestor === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+              ${data.pagoGestor === 'pagado' ? '✓' : '○'} Pago Gest
+            </span>
+            <span class="px-2 py-0.5 rounded ${tieneArchivos ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+              ${tieneArchivos ? '✓' : '○'} Archivo
+            </span>
+          </div>
+          
           <div class="grid grid-cols-2 gap-2">
             <div>
               <span class="text-gray-500">Estado</span>
@@ -647,14 +711,6 @@
             <div>
               <span class="text-gray-500">Pago Gest.</span>
               ${renderSelectField(`req-${tramiteId}-${idx}-pagoG`, data.pagoGestor, PAGO_OPTS, !canEdit)}
-            </div>
-          </div>
-          <div class="mt-2">
-            <span class="text-gray-500">Avance: ${avance}%</span>
-            <input type="range" id="req-${tramiteId}-${idx}-avance" min="0" max="100" value="${avance}" 
-              ${!canEdit ? 'disabled' : ''} class="w-full mt-1">
-            <div class="h-2 bg-gray-200 rounded-full mt-1">
-              <div class="h-2 bg-blue-500 rounded-full transition-all" style="width: ${avance}%"></div>
             </div>
           </div>
           
@@ -1314,9 +1370,12 @@
         costoTramite: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-costoT`).value) || 0,
         pagoTramite: document.getElementById(`req-${tramiteId}-${idx}-pagoT`).value,
         costoGestor: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-costoG`).value) || 0,
-        pagoGestor: document.getElementById(`req-${tramiteId}-${idx}-pagoG`).value,
-        avance: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-avance`).value) / 100
+        pagoGestor: document.getElementById(`req-${tramiteId}-${idx}-pagoG`).value
       };
+      
+      // Calcular avance automáticamente
+      const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) > 0;
+      datos.avance = calcularAvanceRequisito(datos, tieneArchivos) / 100;
       
       await api(`/proyectos/${state.proyectoActual.id}/tramites/${tramiteId}/requisitos`, {
         method: 'POST',
@@ -1334,6 +1393,10 @@
         const archivos = await api(`/proyectos/${state.proyectoActual.id}/archivos/${tramiteId}/${encodeURIComponent(requisito)}`);
         const container = document.getElementById(containerId);
         if (!container) return;
+        
+        // Actualizar contador de archivos para el cálculo de avance
+        const oldCount = state.archivosRequisito[`${tramiteId}-${requisito}`] || 0;
+        state.archivosRequisito[`${tramiteId}-${requisito}`] = archivos.length;
         
         if (archivos.length === 0) {
           container.innerHTML = '<p class="text-xs text-gray-400 italic">Sin archivos</p>';
@@ -1418,7 +1481,11 @@
               alert(res.error);
               container.innerHTML = originalContent;
             } else {
+              // Actualizar contador de archivos
+              state.archivosRequisito[`${tramiteId}-${requisito}`] = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) + 1;
               cargarArchivosRequisito(tramiteId, requisito, containerId);
+              // Re-renderizar para actualizar el avance
+              render();
             }
           } catch (err) {
             alert('Error al subir');
@@ -1500,7 +1567,15 @@
     async function eliminarArchivo(id, tramiteId, requisito, containerId) {
       if (!confirm('¿Eliminar archivo?')) return;
       await api(`/proyectos/${state.proyectoActual.id}/archivos/${id}`, { method: 'DELETE' });
+      
+      // Actualizar contador de archivos
+      if (state.archivosRequisito[`${tramiteId}-${requisito}`] > 0) {
+        state.archivosRequisito[`${tramiteId}-${requisito}`]--;
+      }
+      
       cargarArchivosRequisito(tramiteId, requisito, containerId);
+      // Re-renderizar para actualizar el avance
+      render();
     }
 
     // ==================== RENDER ====================
