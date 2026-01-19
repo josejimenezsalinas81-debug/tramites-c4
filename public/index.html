@@ -638,6 +638,18 @@
         </select>
       `;
     }
+    
+    function renderSelectFieldConEvento(id, value, options, disabled, tramiteId, requisito, idx) {
+      const sel = options.find(o => o.value === value) || { bg: 'bg-gray-300' };
+      return `
+        <select id="${id}" ${disabled ? 'disabled' : ''} 
+          onchange="actualizarAvanceEnTiempoReal(${tramiteId}, '${requisito}', ${idx})"
+          class="w-full p-1.5 rounded text-xs text-white font-medium ${sel.bg} ${disabled ? 'opacity-50' : ''} appearance-none pr-6">
+          <option value="">Seleccionar</option>
+          ${options.map(o => `<option value="${o.value}" ${value === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+      `;
+    }
 
     function renderRequisito(tramiteId, req, idx) {
       const data = state.tramitesData[tramiteId]?.requisitos?.[req] || {};
@@ -653,34 +665,35 @@
       
       // Determinar color de la barra según avance
       const barColor = avance === 100 ? 'bg-green-500' : avance >= 60 ? 'bg-yellow-500' : 'bg-red-400';
+      const reqEscaped = req.replace(/'/g, "\\'");
       
       return `
         <div class="bg-gray-50 p-3 rounded-lg mb-2 text-xs">
           <div class="flex items-center justify-between mb-2">
             <p class="font-medium text-gray-700">• ${req}</p>
-            <span class="font-bold ${avance === 100 ? 'text-green-600' : avance >= 60 ? 'text-yellow-600' : 'text-red-500'}">${avance}%</span>
+            <span id="avance-${tramiteId}-${idx}" class="font-bold ${avance === 100 ? 'text-green-600' : avance >= 60 ? 'text-yellow-600' : 'text-red-500'}">${avance}%</span>
           </div>
           
           <!-- Barra de avance -->
           <div class="h-2 bg-gray-200 rounded-full mb-3">
-            <div class="h-2 ${barColor} rounded-full transition-all" style="width: ${avance}%"></div>
+            <div id="barra-${tramiteId}-${idx}" class="h-2 ${barColor} rounded-full transition-all" style="width: ${avance}%"></div>
           </div>
           
           <!-- Indicadores de completado -->
           <div class="flex flex-wrap gap-1 mb-3 text-xs">
-            <span class="px-2 py-0.5 rounded ${data.estadoDoc === 'tenemos' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+            <span id="ind-estado-${tramiteId}-${idx}" class="px-2 py-0.5 rounded ${data.estadoDoc === 'tenemos' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
               ${data.estadoDoc === 'tenemos' ? '✓' : '○'} Estado
             </span>
-            <span class="px-2 py-0.5 rounded ${data.vigencia === 'vigente' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+            <span id="ind-vigencia-${tramiteId}-${idx}" class="px-2 py-0.5 rounded ${data.vigencia === 'vigente' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
               ${data.vigencia === 'vigente' ? '✓' : '○'} Vigencia
             </span>
-            <span class="px-2 py-0.5 rounded ${data.pagoTramite === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+            <span id="ind-pagoT-${tramiteId}-${idx}" class="px-2 py-0.5 rounded ${data.pagoTramite === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
               ${data.pagoTramite === 'pagado' ? '✓' : '○'} Pago Trám
             </span>
-            <span class="px-2 py-0.5 rounded ${data.pagoGestor === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+            <span id="ind-pagoG-${tramiteId}-${idx}" class="px-2 py-0.5 rounded ${data.pagoGestor === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
               ${data.pagoGestor === 'pagado' ? '✓' : '○'} Pago Gest
             </span>
-            <span class="px-2 py-0.5 rounded ${tieneArchivos ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
+            <span id="ind-archivo-${tramiteId}-${idx}" class="px-2 py-0.5 rounded ${tieneArchivos ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}">
               ${tieneArchivos ? '✓' : '○'} Archivo
             </span>
           </div>
@@ -688,11 +701,11 @@
           <div class="grid grid-cols-2 gap-2">
             <div>
               <span class="text-gray-500">Estado</span>
-              ${renderSelectField(`req-${tramiteId}-${idx}-estado`, data.estadoDoc, ESTADO_OPTS, !canEdit)}
+              ${renderSelectFieldConEvento(`req-${tramiteId}-${idx}-estado`, data.estadoDoc, ESTADO_OPTS, !canEdit, tramiteId, reqEscaped, idx)}
             </div>
             <div>
               <span class="text-gray-500">Vigencia</span>
-              ${renderSelectField(`req-${tramiteId}-${idx}-vigencia`, data.vigencia, VIGENCIA_OPTS, !canEdit)}
+              ${renderSelectFieldConEvento(`req-${tramiteId}-${idx}-vigencia`, data.vigencia, VIGENCIA_OPTS, !canEdit, tramiteId, reqEscaped, idx)}
             </div>
             <div>
               <span class="text-gray-500">Costo Trám.</span>
@@ -701,7 +714,7 @@
             </div>
             <div>
               <span class="text-gray-500">Pago Trám.</span>
-              ${renderSelectField(`req-${tramiteId}-${idx}-pagoT`, data.pagoTramite, PAGO_OPTS, !canEdit)}
+              ${renderSelectFieldConEvento(`req-${tramiteId}-${idx}-pagoT`, data.pagoTramite, PAGO_OPTS, !canEdit, tramiteId, reqEscaped, idx)}
             </div>
             <div>
               <span class="text-gray-500">Costo Gest.</span>
@@ -710,7 +723,7 @@
             </div>
             <div>
               <span class="text-gray-500">Pago Gest.</span>
-              ${renderSelectField(`req-${tramiteId}-${idx}-pagoG`, data.pagoGestor, PAGO_OPTS, !canEdit)}
+              ${renderSelectFieldConEvento(`req-${tramiteId}-${idx}-pagoG`, data.pagoGestor, PAGO_OPTS, !canEdit, tramiteId, reqEscaped, idx)}
             </div>
           </div>
           
@@ -724,7 +737,7 @@
                 Archivos
               </span>
               ${isAdmin ? `
-                <button onclick="subirArchivo(${tramiteId}, '${req.replace(/'/g, "\\'")}', '${archivosContainerId}')" 
+                <button onclick="subirArchivo(${tramiteId}, '${reqEscaped}', '${archivosContainerId}')" 
                   class="flex items-center px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">
                   <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
@@ -738,7 +751,7 @@
             </div>
           </div>
           
-          ${canEdit ? `<button onclick="guardarRequisito(${tramiteId}, '${req.replace(/'/g, "\\'")}', ${idx})" 
+          ${canEdit ? `<button onclick="guardarRequisito(${tramiteId}, '${reqEscaped}', ${idx})" 
             class="mt-3 w-full bg-blue-500 text-white py-1.5 rounded text-xs font-medium">Guardar</button>` : ''}
         </div>
       `;
@@ -1364,27 +1377,106 @@
     }
 
     async function guardarRequisito(tramiteId, requisito, idx) {
+      try {
+        const estadoEl = document.getElementById(`req-${tramiteId}-${idx}-estado`);
+        const vigenciaEl = document.getElementById(`req-${tramiteId}-${idx}-vigencia`);
+        const costoTEl = document.getElementById(`req-${tramiteId}-${idx}-costoT`);
+        const pagoTEl = document.getElementById(`req-${tramiteId}-${idx}-pagoT`);
+        const costoGEl = document.getElementById(`req-${tramiteId}-${idx}-costoG`);
+        const pagoGEl = document.getElementById(`req-${tramiteId}-${idx}-pagoG`);
+        
+        if (!estadoEl || !vigenciaEl || !pagoTEl || !pagoGEl) {
+          alert('Error: No se encontraron los campos');
+          return;
+        }
+        
+        const datos = {
+          estadoDoc: estadoEl.value || '',
+          vigencia: vigenciaEl.value || '',
+          costoTramite: parseFloat(costoTEl?.value) || 0,
+          pagoTramite: pagoTEl.value || '',
+          costoGestor: parseFloat(costoGEl?.value) || 0,
+          pagoGestor: pagoGEl.value || ''
+        };
+        
+        // Calcular avance automáticamente
+        const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) > 0;
+        datos.avance = calcularAvanceRequisito(datos, tieneArchivos) / 100;
+        
+        console.log('Guardando:', { tramiteId, requisito, datos });
+        
+        const res = await api(`/proyectos/${state.proyectoActual.id}/tramites/${tramiteId}/requisitos`, {
+          method: 'POST',
+          body: { requisito, datos }
+        });
+        
+        if (res.error) {
+          alert('Error al guardar: ' + res.error);
+          return;
+        }
+        
+        // Actualizar estado local
+        if (!state.tramitesData[tramiteId]) state.tramitesData[tramiteId] = { requisitos: {} };
+        state.tramitesData[tramiteId].requisitos[requisito] = datos;
+        
+        alert('✅ Guardado correctamente');
+        render();
+      } catch (err) {
+        console.error('Error guardando:', err);
+        alert('Error al guardar. Revisa la conexión.');
+      }
+    }
+    
+    // Actualizar avance en tiempo real al cambiar opciones
+    function actualizarAvanceEnTiempoReal(tramiteId, requisito, idx) {
+      const estadoEl = document.getElementById(`req-${tramiteId}-${idx}-estado`);
+      const vigenciaEl = document.getElementById(`req-${tramiteId}-${idx}-vigencia`);
+      const pagoTEl = document.getElementById(`req-${tramiteId}-${idx}-pagoT`);
+      const pagoGEl = document.getElementById(`req-${tramiteId}-${idx}-pagoG`);
+      const avanceEl = document.getElementById(`avance-${tramiteId}-${idx}`);
+      const barraEl = document.getElementById(`barra-${tramiteId}-${idx}`);
+      
+      if (!estadoEl || !vigenciaEl || !pagoTEl || !pagoGEl || !avanceEl || !barraEl) return;
+      
       const datos = {
-        estadoDoc: document.getElementById(`req-${tramiteId}-${idx}-estado`).value,
-        vigencia: document.getElementById(`req-${tramiteId}-${idx}-vigencia`).value,
-        costoTramite: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-costoT`).value) || 0,
-        pagoTramite: document.getElementById(`req-${tramiteId}-${idx}-pagoT`).value,
-        costoGestor: parseFloat(document.getElementById(`req-${tramiteId}-${idx}-costoG`).value) || 0,
-        pagoGestor: document.getElementById(`req-${tramiteId}-${idx}-pagoG`).value
+        estadoDoc: estadoEl.value,
+        vigencia: vigenciaEl.value,
+        pagoTramite: pagoTEl.value,
+        pagoGestor: pagoGEl.value
       };
       
-      // Calcular avance automáticamente
       const tieneArchivos = (state.archivosRequisito[`${tramiteId}-${requisito}`] || 0) > 0;
-      datos.avance = calcularAvanceRequisito(datos, tieneArchivos) / 100;
+      const avance = calcularAvanceRequisito(datos, tieneArchivos);
       
-      await api(`/proyectos/${state.proyectoActual.id}/tramites/${tramiteId}/requisitos`, {
-        method: 'POST',
-        body: { requisito, datos }
-      });
+      // Actualizar texto
+      avanceEl.textContent = avance + '%';
+      avanceEl.className = `font-bold ${avance === 100 ? 'text-green-600' : avance >= 60 ? 'text-yellow-600' : 'text-red-500'}`;
       
-      if (!state.tramitesData[tramiteId]) state.tramitesData[tramiteId] = { requisitos: {} };
-      state.tramitesData[tramiteId].requisitos[requisito] = datos;
-      render();
+      // Actualizar barra
+      const barColor = avance === 100 ? 'bg-green-500' : avance >= 60 ? 'bg-yellow-500' : 'bg-red-400';
+      barraEl.style.width = avance + '%';
+      barraEl.className = `h-2 ${barColor} rounded-full transition-all`;
+      
+      // Actualizar indicadores
+      document.getElementById(`ind-estado-${tramiteId}-${idx}`).className = 
+        `px-2 py-0.5 rounded ${datos.estadoDoc === 'tenemos' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+      document.getElementById(`ind-estado-${tramiteId}-${idx}`).innerHTML = 
+        `${datos.estadoDoc === 'tenemos' ? '✓' : '○'} Estado`;
+        
+      document.getElementById(`ind-vigencia-${tramiteId}-${idx}`).className = 
+        `px-2 py-0.5 rounded ${datos.vigencia === 'vigente' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+      document.getElementById(`ind-vigencia-${tramiteId}-${idx}`).innerHTML = 
+        `${datos.vigencia === 'vigente' ? '✓' : '○'} Vigencia`;
+        
+      document.getElementById(`ind-pagoT-${tramiteId}-${idx}`).className = 
+        `px-2 py-0.5 rounded ${datos.pagoTramite === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+      document.getElementById(`ind-pagoT-${tramiteId}-${idx}`).innerHTML = 
+        `${datos.pagoTramite === 'pagado' ? '✓' : '○'} Pago Trám`;
+        
+      document.getElementById(`ind-pagoG-${tramiteId}-${idx}`).className = 
+        `px-2 py-0.5 rounded ${datos.pagoGestor === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`;
+      document.getElementById(`ind-pagoG-${tramiteId}-${idx}`).innerHTML = 
+        `${datos.pagoGestor === 'pagado' ? '✓' : '○'} Pago Gest`;
     }
 
     // ==================== ARCHIVOS ====================
@@ -1610,3 +1702,4 @@
   </script>
 </body>
 </html>
+
