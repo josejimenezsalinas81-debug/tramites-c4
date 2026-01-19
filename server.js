@@ -155,9 +155,9 @@ async function initDB() {
   }
 }
 
-// Middleware
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+// Middleware - Límite aumentado para archivos grandes (500MB)
+app.use(express.json({ limit: '700mb' }));
+app.use(express.urlencoded({ limit: '700mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.set('trust proxy', 1);
 
@@ -844,8 +844,8 @@ app.post('/api/proyectos/:proyectoId/archivos', verificarToken, async (req, res)
       return res.status(400).json({ error: 'Solo se permiten archivos PDF y Word' });
     }
 
-    if (contenido.length > 70000000) {
-      return res.status(400).json({ error: 'Archivo demasiado grande. Máximo 50MB.' });
+    if (contenido.length > 700000000) {
+      return res.status(400).json({ error: 'Archivo demasiado grande. Máximo 500MB.' });
     }
 
     const result = await client.query(
