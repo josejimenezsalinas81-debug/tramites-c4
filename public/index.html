@@ -144,6 +144,20 @@
       state.tramitesData = data.tramites || {};
       state.miRolEnProyecto = data.miRol;
       
+      // Cargar conteo de archivos para calcular avance correctamente
+      try {
+        const archivosConteo = await api(`/proyectos/${proyectoId}/archivos-conteo`);
+        // Verificar que sea un objeto válido (no un error)
+        if (archivosConteo && !archivosConteo.error) {
+          state.archivosRequisito = archivosConteo;
+        } else {
+          state.archivosRequisito = {};
+        }
+      } catch (e) {
+        console.error('Error cargando conteo de archivos:', e);
+        state.archivosRequisito = {};
+      }
+      
       if (state.miRolEnProyecto === 'admin' || state.user?.esSuperadmin) {
         state.usuariosProyecto = await api(`/proyectos/${proyectoId}/usuarios`);
       }
@@ -435,7 +449,12 @@
               </div>
             ` : `
               <div class="space-y-3">
-                ${state.proyectos.map(p => `
+                ${state.proyectos.map(p => {
+                  const avance = parseInt(p.avance_general) || 0;
+                  const barColor = avance === 100 ? 'bg-green-500' : avance >= 60 ? 'bg-yellow-500' : avance > 0 ? 'bg-blue-500' : 'bg-gray-300';
+                  const textColor = avance === 100 ? 'text-green-600' : avance >= 60 ? 'text-yellow-600' : avance > 0 ? 'text-blue-600' : 'text-gray-400';
+                  
+                  return `
                   <div onclick="abrirProyecto(${JSON.stringify(p).replace(/"/g, '&quot;')})" 
                     class="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-lg transition-shadow">
                     <div class="flex items-start justify-between">
@@ -445,8 +464,9 @@
                         ${p.responsable ? `<p class="text-sm text-gray-500">👤 ${p.responsable}</p>` : ''}
                       </div>
                       <div class="text-right">
+                        <div class="text-2xl font-bold ${textColor}">${avance}%</div>
                         ${p.mi_rol ? `
-                          <span class="inline-block px-2 py-1 text-xs rounded-full ${
+                          <span class="inline-block px-2 py-1 text-xs rounded-full mt-1 ${
                             p.mi_rol === 'admin' ? 'bg-purple-100 text-purple-700' :
                             p.mi_rol === 'editor' ? 'bg-blue-100 text-blue-700' :
                             'bg-gray-100 text-gray-700'
@@ -454,11 +474,23 @@
                             ${p.mi_rol === 'admin' ? '👑 Admin' : p.mi_rol === 'editor' ? '✏️ Editor' : '👁️ Viewer'}
                           </span>
                         ` : ''}
-                        ${isSuperadmin && p.total_usuarios ? `
+                        ${state.user?.esSuperadmin && p.total_usuarios ? `
                           <p class="text-xs text-gray-400 mt-1">${p.total_usuarios} usuarios</p>
                         ` : ''}
                       </div>
                     </div>
+                    
+                    <!-- Barra de avance general -->
+                    <div class="mt-3">
+                      <div class="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>Avance general</span>
+                        <span class="${textColor} font-medium">${avance}%</span>
+                      </div>
+                      <div class="h-2 bg-gray-200 rounded-full">
+                        <div class="h-2 ${barColor} rounded-full transition-all" style="width: ${avance}%"></div>
+                      </div>
+                    </div>
+                    
                     <div class="flex items-center mt-3 text-blue-600">
                       <span class="text-sm">Ver trámites</span>
                       <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -466,7 +498,7 @@
                       </svg>
                     </div>
                   </div>
-                `).join('')}
+                `}).join('')}
               </div>
             `}
           </div>
@@ -1523,8 +1555,15 @@
         const container = document.getElementById(containerId);
         if (!container) return;
         
+        // Verificar que archivos sea un array válido
+        if (!Array.isArray(archivos)) {
+          console.error('Respuesta inválida de archivos:', archivos);
+          state.archivosRequisito[`${tramiteId}-${requisito}`] = 0;
+          container.innerHTML = '<p class="text-xs text-gray-400 italic">Sin archivos</p>';
+          return;
+        }
+        
         // Actualizar contador de archivos para el cálculo de avance
-        const oldCount = state.archivosRequisito[`${tramiteId}-${requisito}`] || 0;
         state.archivosRequisito[`${tramiteId}-${requisito}`] = archivos.length;
         
         if (archivos.length === 0) {
