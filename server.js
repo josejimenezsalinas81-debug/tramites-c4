@@ -458,7 +458,20 @@ app.get('/api/proyectos', verificarToken, async (req, res) => {
       `, [req.user.id]);
     }
 
-    res.json(proyectos.rows);
+    // Calcular avance de cada proyecto
+    const proyectosConAvance = await Promise.all(proyectos.rows.map(async (p) => {
+      // Obtener promedio de avance de todos los requisitos del proyecto
+      const avanceResult = await client.query(`
+        SELECT COALESCE(AVG(avance), 0) as avance_promedio
+        FROM tramites_data
+        WHERE proyecto_id = $1
+      `, [p.id]);
+      
+      const avance = parseFloat(avanceResult.rows[0]?.avance_promedio || 0) * 100;
+      return { ...p, avance_general: avance.toFixed(0) };
+    }));
+
+    res.json(proyectosConAvance);
   } finally {
     client.release();
   }
@@ -852,6 +865,40 @@ app.post('/api/proyectos/:proyectoId/tramites/:tramiteId/requisitos', verificarT
 
 // ==================== ARCHIVOS DE PROYECTO ====================
 
+// Obtener conteo de archivos por requisito (para calcular avance)
+app.get('/api/proyectos/:proyectoId/archivos-conteo', verificarToken, async (req, res) => {
+  const { proyectoId } = req.params;
+  const client = await pool.connect();
+
+  try {
+    const permiso = await verificarPermisoProyecto(req.user.id, proyectoId, ['admin', 'editor', 'viewer'], client);
+    if (!permiso.permitido) {
+      return res.json({});
+    }
+
+    const result = await client.query(
+      `SELECT tramite_id, requisito, COUNT(*) as cantidad 
+       FROM archivos 
+       WHERE proyecto_id = $1 
+       GROUP BY tramite_id, requisito`,
+      [proyectoId]
+    );
+
+    // Convertir a objeto { "tramiteId-requisito": cantidad }
+    const conteo = {};
+    result.rows.forEach(row => {
+      conteo[`${row.tramite_id}-${row.requisito}`] = parseInt(row.cantidad);
+    });
+
+    res.json(conteo);
+  } catch (error) {
+    console.error('Error al obtener conteo de archivos:', error);
+    res.json({});
+  } finally {
+    client.release();
+  }
+});
+
 // Subir archivo
 app.post('/api/proyectos/:proyectoId/archivos', verificarToken, async (req, res) => {
   const { proyectoId } = req.params;
@@ -927,7 +974,7 @@ app.get('/api/proyectos/:proyectoId/archivos/:tramiteId/:requisito', verificarTo
   try {
     const permiso = await verificarPermisoProyecto(req.user.id, proyectoId, ['admin', 'editor', 'viewer'], client);
     if (!permiso.permitido) {
-      return res.status(403).json({ error: 'No tienes acceso' });
+      return res.status(403).json([]);
     }
 
     const result = await client.query(
@@ -940,6 +987,9 @@ app.get('/api/proyectos/:proyectoId/archivos/:tramiteId/:requisito', verificarTo
     );
 
     res.json(result.rows);
+  } catch (error) {
+    console.error('Error al listar archivos:', error);
+    res.json([]);
   } finally {
     client.release();
   }
