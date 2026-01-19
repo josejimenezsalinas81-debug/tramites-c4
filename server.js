@@ -11,6 +11,27 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
+// Configuración de trámites (17 trámites con sus requisitos)
+const TRAMITES = [
+  { id: 1, nombre: "MEMORIA DESCRIPTIVA / ESTUDIO IMPACTO VIAL", requisitos: ["Predial vigente", "Documentos de Propiedad", "Identificación Oficial", "Constancia de situación Fiscal", "Memoria descriptiva del proyecto", "DWG del proyecto", "Acta constitutiva de la empresa", "Poder notarial"]},
+  { id: 2, nombre: "USO DE SUELO", requisitos: ["Predial vigente", "Documentos de Propiedad", "Croquis de localización detallado", "Fotografías del predio con sus colindancias", "Proyecto arquitectónico"]},
+  { id: 3, nombre: "INTEGRACIÓN VIAL", requisitos: ["Predial vigente", "Deslinde vigente", "Uso de suelo Favorable", "Fotografías del predio con colindancias", "Plano del Proyecto Vial", "Estudio de Impacto Vial"]},
+  { id: 4, nombre: "FACTIBILIDAD DE CESPT", requisitos: ["Poder simple", "Identificación Oficial", "Predial vigente", "Deslinde vigente", "Documentos de Propiedad"]},
+  { id: 5, nombre: "FACTIBILIDAD DE CFE", requisitos: ["Poder simple", "Identificación Oficial", "Predial vigente", "Deslinde vigente", "Documentos de Propiedad", "Carga estimada en KW"]},
+  { id: 6, nombre: "BOMBEROS", requisitos: ["Croquis de localización", "Predial vigente", "Uso de suelo Favorable", "Ubicación de hidrantes", "Proyecto en PDF"]},
+  { id: 7, nombre: "IMPACTO AMBIENTAL", requisitos: ["Documentos de Propiedad", "Predial vigente", "Deslinde vigente", "Croquis de localización", "Constancia de situación Fiscal", "Uso de suelo Favorable"]},
+  { id: 8, nombre: "MOVIMIENTO DE TIERRAS", requisitos: ["Uso de suelo Favorable", "Deslinde vigente", "Documentos de Propiedad", "Mecánica de suelos", "Carta responsiva del perito", "Programa de obra firmado"]},
+  { id: 9, nombre: "PLANO DEL SEMBRADO", requisitos: ["Licencia de construcción", "Proyecto aprobado", "Proyecto en DWG"]},
+  { id: 10, nombre: "C1", requisitos: ["Trámite 9 completado", "Licencia de construcción vigente", "Planos autorizados", "Uso de suelo Favorable", "Deslinde vigente"]},
+  { id: 11, nombre: "LICENCIA CON C-2", requisitos: ["Documentos de Propiedad", "Predial vigente", "Deslinde vigente", "Proyecto arquitectónico ejecutivo", "Memoria de cálculo", "Mecánica de suelos"]},
+  { id: 12, nombre: "EQUIPAMIENTO ESCOLAR", requisitos: ["Avalúo", "Sembrado autorizado"]},
+  { id: 13, nombre: "C-3", requisitos: ["Licencia con C2", "Certificado Fiscal", "Certificado Hipotecario", "Avalúo", "Memoria descriptiva", "Planos del sembrado"]},
+  { id: 14, nombre: "CLAVES CATASTRALES", requisitos: ["C3 aprobado", "Memorias descriptivas", "Tabla de indivisos"]},
+  { id: 15, nombre: "NÚMEROS OFICIALES", requisitos: ["Croquis de localización", "Escrituras del régimen", "Predial vigente"]},
+  { id: 16, nombre: "T.O. (TERMINACIÓN DE OBRA)", requisitos: ["Licencia de construcción", "Sembrado autorizado", "Certificación de gas", "Reporte fotográfico"]},
+  { id: 17, nombre: "C-4 (LICENCIA FINAL)", requisitos: ["C3 aprobado", "T.O. aprobada", "Fianza", "Sembrado autorizado", "Donaciones"]}
+];
+
 // Configuración
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -458,17 +479,65 @@ app.get('/api/proyectos', verificarToken, async (req, res) => {
       `, [req.user.id]);
     }
 
-    // Calcular avance de cada proyecto
+    // Calcular avance de cada proyecto considerando los 17 trámites
     const proyectosConAvance = await Promise.all(proyectos.rows.map(async (p) => {
-      // Obtener promedio de avance de todos los requisitos del proyecto
-      const avanceResult = await client.query(`
-        SELECT COALESCE(AVG(avance), 0) as avance_promedio
+      // Obtener todos los datos de requisitos del proyecto
+      const datosResult = await client.query(`
+        SELECT tramite_id, requisito, estado_doc, vigencia, pago_tramite, pago_gestor, avance
         FROM tramites_data
         WHERE proyecto_id = $1
       `, [p.id]);
       
-      const avance = parseFloat(avanceResult.rows[0]?.avance_promedio || 0) * 100;
-      return { ...p, avance_general: avance.toFixed(0) };
+      // Obtener conteo de archivos por requisito
+      const archivosResult = await client.query(`
+        SELECT tramite_id, requisito, COUNT(*) as cantidad
+        FROM archivos
+        WHERE proyecto_id = $1
+        GROUP BY tramite_id, requisito
+      `, [p.id]);
+      
+      // Crear mapas para acceso rápido
+      const datosMap = {};
+      datosResult.rows.forEach(row => {
+        datosMap[`${row.tramite_id}-${row.requisito}`] = row;
+      });
+      
+      const archivosMap = {};
+      archivosResult.rows.forEach(row => {
+        archivosMap[`${row.tramite_id}-${row.requisito}`] = parseInt(row.cantidad);
+      });
+      
+      // Calcular avance de cada trámite
+      let avanceTotalObra = 0;
+      
+      TRAMITES.forEach(tramite => {
+        let avanceTramite = 0;
+        
+        tramite.requisitos.forEach(requisito => {
+          const key = `${tramite.id}-${requisito}`;
+          const datos = datosMap[key] || {};
+          const tieneArchivos = (archivosMap[key] || 0) > 0;
+          
+          // Calcular avance del requisito (5 criterios = 20% cada uno)
+          let avanceRequisito = 0;
+          if (datos.estado_doc === 'tenemos') avanceRequisito += 20;
+          if (datos.vigencia === 'vigente') avanceRequisito += 20;
+          if (datos.pago_tramite === 'pagado') avanceRequisito += 20;
+          if (datos.pago_gestor === 'pagado') avanceRequisito += 20;
+          if (tieneArchivos) avanceRequisito += 20;
+          
+          avanceTramite += avanceRequisito;
+        });
+        
+        // Promedio del trámite
+        avanceTramite = tramite.requisitos.length > 0 ? avanceTramite / tramite.requisitos.length : 0;
+        avanceTotalObra += avanceTramite;
+      });
+      
+      // Promedio de la obra (17 trámites)
+      const avanceFinal = TRAMITES.length > 0 ? avanceTotalObra / TRAMITES.length : 0;
+      
+      return { ...p, avance_general: avanceFinal.toFixed(0) };
     }));
 
     res.json(proyectosConAvance);
