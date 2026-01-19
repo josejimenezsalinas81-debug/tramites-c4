@@ -970,3 +970,4 @@ initDB().then(() => {
   console.error('Error al inicializar:', err);
   process.exit(1);
 });
+
