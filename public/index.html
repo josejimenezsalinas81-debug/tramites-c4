@@ -1343,26 +1343,47 @@
         const isAdmin = state.miRolEnProyecto === 'admin' || state.user?.esSuperadmin;
         
         container.innerHTML = archivos.map(a => {
-          const icono = a.tipo_archivo === 'application/pdf' ? '📄' : '📝';
+          const esPDF = a.tipo_archivo === 'application/pdf';
+          const icono = esPDF ? '📄' : '📝';
+          const tamanioMB = a.tamanio ? (a.tamanio / 1024 / 1024 * 0.75).toFixed(1) : '?';
+          
           return `
-            <div class="flex items-center justify-between bg-white border rounded p-2 mb-1">
-              <div class="flex items-center flex-1 min-w-0">
-                <span class="mr-2">${icono}</span>
-                <span class="text-xs truncate">${a.nombre_archivo}</span>
-              </div>
-              <div class="flex gap-1">
-                <button onclick="descargarArchivo(${a.id})" class="p-1 bg-blue-100 text-blue-600 rounded">
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                  </svg>
-                </button>
-                ${isAdmin ? `
-                  <button onclick="eliminarArchivo(${a.id}, ${tramiteId}, '${requisito.replace(/'/g, "\\'")}', '${containerId}')" class="p-1 bg-red-100 text-red-600 rounded">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+            <div class="bg-white border rounded p-2 mb-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center flex-1 min-w-0">
+                  <span class="mr-2 text-lg">${icono}</span>
+                  <div class="min-w-0">
+                    <p class="text-xs font-medium truncate">${a.nombre_archivo}</p>
+                    <p class="text-xs text-gray-400">${tamanioMB} MB</p>
+                  </div>
+                </div>
+                <div class="flex gap-1 ml-2">
+                  ${esPDF ? `
+                    <button onclick="verArchivo(${a.id}, '${a.nombre_archivo.replace(/'/g, "\\'")}')" class="p-1.5 bg-purple-100 text-purple-600 rounded" title="Ver">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                      </svg>
+                    </button>
+                  ` : ''}
+                  <button onclick="descargarArchivo(${a.id}, this)" class="p-1.5 bg-blue-100 text-blue-600 rounded" title="Descargar">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                     </svg>
                   </button>
-                ` : ''}
+                  <button onclick="compartirArchivo(${a.id}, '${a.nombre_archivo.replace(/'/g, "\\'")}')" class="p-1.5 bg-green-100 text-green-600 rounded" title="Compartir">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                    </svg>
+                  </button>
+                  ${isAdmin ? `
+                    <button onclick="eliminarArchivo(${a.id}, ${tramiteId}, '${requisito.replace(/'/g, "\\'")}', '${containerId}')" class="p-1.5 bg-red-100 text-red-600 rounded" title="Eliminar">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                      </svg>
+                    </button>
+                  ` : ''}
+                </div>
               </div>
             </div>
           `;
@@ -1383,46 +1404,271 @@
         
         const tiposPermitidos = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
         if (!tiposPermitidos.includes(file.type)) {
-          alert('Solo PDF y Word');
+          alert('Solo se permiten archivos PDF y Word');
           return;
         }
         
-        if (file.size > 50 * 1024 * 1024) {
-          alert('Máximo 50MB');
+        // Límite de 500MB
+        if (file.size > 500 * 1024 * 1024) {
+          alert('El archivo es muy grande. Máximo 500MB');
           return;
         }
+        
+        // Mostrar progreso
+        const container = document.getElementById(containerId);
+        const originalContent = container.innerHTML;
+        container.innerHTML = `
+          <div class="text-center py-4">
+            <div class="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+            <p class="text-sm text-gray-600">Subiendo archivo...</p>
+            <p class="text-xs text-gray-400">${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)</p>
+          </div>
+        `;
         
         const reader = new FileReader();
         reader.onload = async () => {
-          const base64 = reader.result.split(',')[1];
-          const res = await api(`/proyectos/${state.proyectoActual.id}/archivos`, {
-            method: 'POST',
-            body: { tramiteId, requisito, nombreArchivo: file.name, tipoArchivo: file.type, contenido: base64 }
-          });
-          
-          if (res.error) alert(res.error);
-          else cargarArchivosRequisito(tramiteId, requisito, containerId);
+          try {
+            const base64 = reader.result.split(',')[1];
+            const res = await api(`/proyectos/${state.proyectoActual.id}/archivos`, {
+              method: 'POST',
+              body: { tramiteId, requisito, nombreArchivo: file.name, tipoArchivo: file.type, contenido: base64 }
+            });
+            
+            if (res.error) {
+              alert(res.error);
+              container.innerHTML = originalContent;
+            } else {
+              cargarArchivosRequisito(tramiteId, requisito, containerId);
+            }
+          } catch (err) {
+            alert('Error al subir el archivo. Intenta de nuevo.');
+            container.innerHTML = originalContent;
+          }
+        };
+        reader.onerror = () => {
+          alert('Error al leer el archivo');
+          container.innerHTML = originalContent;
         };
         reader.readAsDataURL(file);
       };
       input.click();
     }
 
-    async function descargarArchivo(id) {
-      const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
-      if (res.error) { alert(res.error); return; }
+    // Variable global para almacenar archivo actual
+    let archivoActual = null;
+
+    async function descargarArchivo(id, btn) {
+      // Mostrar cargando
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+      btn.disabled = true;
       
-      const byteChars = atob(res.contenido);
-      const byteNums = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([new Uint8Array(byteNums)], { type: res.tipo_archivo });
+      try {
+        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
+        if (res.error) { 
+          alert(res.error); 
+          return; 
+        }
+        
+        // Convertir base64 a blob de manera más eficiente
+        const byteString = atob(res.contenido);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < byteString.length; i++) {
+          uint8Array[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([uint8Array], { type: res.tipo_archivo });
+        
+        // Descargar
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = res.nombre_archivo;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Limpiar después de un momento
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (err) {
+        alert('Error al descargar. Intenta de nuevo.');
+      } finally {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+      }
+    }
+
+    async function verArchivo(id, nombre) {
+      // Crear modal de visualización
+      const modal = document.createElement('div');
+      modal.id = 'modal-visor';
+      modal.className = 'fixed inset-0 bg-black/80 z-50 flex flex-col';
+      modal.innerHTML = `
+        <div class="bg-white p-3 flex items-center justify-between">
+          <h3 class="font-bold text-sm truncate flex-1">${nombre}</h3>
+          <div class="flex gap-2">
+            <button onclick="compartirDesdeVisor()" class="px-3 py-1 bg-green-500 text-white rounded text-sm">Compartir</button>
+            <button onclick="descargarDesdeVisor()" class="px-3 py-1 bg-blue-500 text-white rounded text-sm">Descargar</button>
+            <button onclick="cerrarVisor()" class="px-3 py-1 bg-gray-500 text-white rounded text-sm">Cerrar</button>
+          </div>
+        </div>
+        <div class="flex-1 bg-gray-200 flex items-center justify-center">
+          <div class="text-center">
+            <div class="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
+            <p class="text-gray-600">Cargando documento...</p>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      document.body.style.overflow = 'hidden';
+      
+      try {
+        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
+        if (res.error) {
+          alert(res.error);
+          cerrarVisor();
+          return;
+        }
+        
+        // Guardar para compartir/descargar
+        archivoActual = res;
+        
+        // Mostrar PDF
+        const pdfViewer = modal.querySelector('.flex-1');
+        pdfViewer.innerHTML = `
+          <iframe src="data:application/pdf;base64,${res.contenido}" 
+            class="w-full h-full" style="min-height: 80vh;"></iframe>
+        `;
+      } catch (err) {
+        alert('Error al cargar el documento');
+        cerrarVisor();
+      }
+    }
+
+    function cerrarVisor() {
+      const modal = document.getElementById('modal-visor');
+      if (modal) modal.remove();
+      document.body.style.overflow = '';
+      archivoActual = null;
+    }
+
+    function descargarDesdeVisor() {
+      if (!archivoActual) return;
+      
+      const byteString = atob(archivoActual.contenido);
+      const arrayBuffer = new ArrayBuffer(byteString.length);
+      const uint8Array = new Uint8Array(arrayBuffer);
+      for (let i = 0; i < byteString.length; i++) {
+        uint8Array[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([uint8Array], { type: archivoActual.tipo_archivo });
       
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = res.nombre_archivo;
+      a.download = archivoActual.nombre_archivo;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    async function compartirDesdeVisor() {
+      if (!archivoActual) return;
+      await compartirArchivoBlob(archivoActual);
+    }
+
+    async function compartirArchivo(id, nombre) {
+      try {
+        const res = await api(`/proyectos/${state.proyectoActual.id}/archivos/descargar/${id}`);
+        if (res.error) {
+          alert(res.error);
+          return;
+        }
+        await compartirArchivoBlob(res);
+      } catch (err) {
+        alert('Error al preparar el archivo para compartir');
+      }
+    }
+
+    async function compartirArchivoBlob(archivo) {
+      // Convertir a blob
+      const byteString = atob(archivo.contenido);
+      const arrayBuffer = new ArrayBuffer(byteString.length);
+      const uint8Array = new Uint8Array(arrayBuffer);
+      for (let i = 0; i < byteString.length; i++) {
+        uint8Array[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([uint8Array], { type: archivo.tipo_archivo });
+      const file = new File([blob], archivo.nombre_archivo, { type: archivo.tipo_archivo });
+      
+      // Verificar si el navegador soporta Web Share API
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            title: archivo.nombre_archivo,
+            text: `Documento: ${archivo.nombre_archivo}`,
+            files: [file]
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            mostrarOpcionesCompartir(archivo);
+          }
+        }
+      } else {
+        // Fallback: mostrar opciones manuales
+        mostrarOpcionesCompartir(archivo);
+      }
+    }
+
+    function mostrarOpcionesCompartir(archivo) {
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+      
+      modal.innerHTML = `
+        <div class="bg-white rounded-xl p-4 w-full max-w-sm">
+          <h3 class="font-bold text-lg mb-4 text-center">📤 Compartir archivo</h3>
+          <p class="text-sm text-gray-600 text-center mb-4">${archivo.nombre_archivo}</p>
+          
+          <div class="space-y-2">
+            <a href="https://wa.me/?text=${encodeURIComponent('Te comparto este documento: ' + archivo.nombre_archivo)}" 
+              target="_blank" class="flex items-center p-3 bg-green-500 text-white rounded-lg hover:bg-green-600">
+              <span class="text-xl mr-3">💬</span>
+              <span class="font-medium">WhatsApp</span>
+            </a>
+            
+            <a href="mailto:?subject=${encodeURIComponent('Documento: ' + archivo.nombre_archivo)}&body=${encodeURIComponent('Te comparto este documento.')}" 
+              class="flex items-center p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+              <span class="text-xl mr-3">📧</span>
+              <span class="font-medium">Correo electrónico</span>
+            </a>
+            
+            <button onclick="copiarNombreArchivo('${archivo.nombre_archivo.replace(/'/g, "\\'")}')" 
+              class="flex items-center p-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 w-full">
+              <span class="text-xl mr-3">📋</span>
+              <span class="font-medium">Copiar nombre</span>
+            </button>
+          </div>
+          
+          <p class="text-xs text-gray-400 text-center mt-4">
+            💡 Descarga el archivo primero y luego adjúntalo en tu app de mensajería
+          </p>
+          
+          <button onclick="this.closest('.fixed').remove()" 
+            class="mt-4 w-full py-2 bg-gray-200 rounded-lg text-gray-700 font-medium">
+            Cerrar
+          </button>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+    }
+
+    function copiarNombreArchivo(nombre) {
+      navigator.clipboard.writeText(nombre).then(() => {
+        alert('✅ Nombre copiado al portapapeles');
+      }).catch(() => {
+        alert('No se pudo copiar');
+      });
     }
 
     async function eliminarArchivo(id, tramiteId, requisito, containerId) {
