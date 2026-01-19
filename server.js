@@ -37,6 +37,27 @@ async function initDB() {
             RAISE NOTICE 'Columna es_superadmin agregada a usuarios';
           END IF;
         END IF;
+        
+        -- Agregar constraint UNIQUE a tramites_data si no existe
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tramites_data') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint 
+            WHERE conname = 'tramites_data_proyecto_id_tramite_id_requisito_key'
+            OR conname = 'tramites_data_unique_constraint'
+          ) THEN
+            -- Primero eliminar duplicados si existen
+            DELETE FROM tramites_data a USING tramites_data b
+            WHERE a.id < b.id 
+            AND a.proyecto_id = b.proyecto_id 
+            AND a.tramite_id = b.tramite_id 
+            AND a.requisito = b.requisito;
+            
+            -- Crear constraint
+            ALTER TABLE tramites_data ADD CONSTRAINT tramites_data_unique_constraint 
+              UNIQUE (proyecto_id, tramite_id, requisito);
+            RAISE NOTICE 'Constraint UNIQUE agregado a tramites_data';
+          END IF;
+        END IF;
       END $$;
     `);
 
@@ -90,7 +111,8 @@ async function initDB() {
         avance DECIMAL DEFAULT 0,
         notas TEXT,
         actualizado_por INTEGER,
-        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(proyecto_id, tramite_id, requisito)
       );
 
       CREATE TABLE IF NOT EXISTS archivos (
@@ -811,15 +833,18 @@ app.post('/api/proyectos/:proyectoId/tramites/:tramiteId/requisitos', verificarT
         fecha_actualizacion = CURRENT_TIMESTAMP
     `, [
       proyectoId, tramiteId, requisito,
-      datos.estadoDoc, datos.vigencia, datos.fechaVenc,
-      datos.costoTramite || 0, datos.pagoTramite,
-      datos.costoGestor || 0, datos.pagoGestor,
-      datos.avance || 0, datos.notas,
+      datos.estadoDoc || '', datos.vigencia || '', datos.fechaVenc || '',
+      datos.costoTramite || 0, datos.pagoTramite || '',
+      datos.costoGestor || 0, datos.pagoGestor || '',
+      datos.avance || 0, datos.notas || '',
       req.user.id
     ]);
 
     io.emit('tramite_actualizado', { proyectoId, tramiteId, requisito, datos });
     res.json({ success: true });
+  } catch (error) {
+    console.error('Error al guardar requisito:', error);
+    res.status(500).json({ error: 'Error al guardar. Intenta de nuevo.' });
   } finally {
     client.release();
   }
@@ -970,4 +995,3 @@ initDB().then(() => {
   console.error('Error al inicializar:', err);
   process.exit(1);
 });
-
