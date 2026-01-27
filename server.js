@@ -488,12 +488,12 @@ app.get('/api/proyectos', verificarToken, async (req, res) => {
         WHERE proyecto_id = $1
       `, [p.id]);
       
-      // Obtener conteo de archivos por requisito
+      // Obtener conteo de archivos por requisito (COMPARTIDO - sin tramite_id)
       const archivosResult = await client.query(`
-        SELECT tramite_id, requisito, COUNT(*) as cantidad
+        SELECT requisito, COUNT(*) as cantidad
         FROM archivos
         WHERE proyecto_id = $1
-        GROUP BY tramite_id, requisito
+        GROUP BY requisito
       `, [p.id]);
       
       // Crear mapas para acceso rápido
@@ -502,9 +502,10 @@ app.get('/api/proyectos', verificarToken, async (req, res) => {
         datosMap[`${row.tramite_id}-${row.requisito}`] = row;
       });
       
+      // Mapa de archivos por requisito (COMPARTIDO)
       const archivosMap = {};
       archivosResult.rows.forEach(row => {
-        archivosMap[`${row.tramite_id}-${row.requisito}`] = parseInt(row.cantidad);
+        archivosMap[row.requisito] = parseInt(row.cantidad);
       });
       
       // Calcular avance de cada trámite
@@ -516,7 +517,8 @@ app.get('/api/proyectos', verificarToken, async (req, res) => {
         tramite.requisitos.forEach(requisito => {
           const key = `${tramite.id}-${requisito}`;
           const datos = datosMap[key] || {};
-          const tieneArchivos = (archivosMap[key] || 0) > 0;
+          // Archivos compartidos - buscar solo por nombre de requisito
+          const tieneArchivos = (archivosMap[requisito] || 0) > 0;
           
           // Calcular avance del requisito (5 criterios = 20% cada uno)
           let avanceRequisito = 0;
@@ -934,7 +936,7 @@ app.post('/api/proyectos/:proyectoId/tramites/:tramiteId/requisitos', verificarT
 
 // ==================== ARCHIVOS DE PROYECTO ====================
 
-// Obtener conteo de archivos por requisito (para calcular avance)
+// Obtener conteo de archivos por requisito (COMPARTIDO entre trámites con mismo requisito)
 app.get('/api/proyectos/:proyectoId/archivos-conteo', verificarToken, async (req, res) => {
   const { proyectoId } = req.params;
   const client = await pool.connect();
@@ -945,18 +947,24 @@ app.get('/api/proyectos/:proyectoId/archivos-conteo', verificarToken, async (req
       return res.json({});
     }
 
+    // Obtener archivos agrupados por requisito (sin importar tramite_id)
     const result = await client.query(
-      `SELECT tramite_id, requisito, COUNT(*) as cantidad 
+      `SELECT requisito, COUNT(*) as cantidad 
        FROM archivos 
        WHERE proyecto_id = $1 
-       GROUP BY tramite_id, requisito`,
+       GROUP BY requisito`,
       [proyectoId]
     );
 
-    // Convertir a objeto { "tramiteId-requisito": cantidad }
+    // Crear conteo para TODOS los trámites que tengan ese requisito
     const conteo = {};
     result.rows.forEach(row => {
-      conteo[`${row.tramite_id}-${row.requisito}`] = parseInt(row.cantidad);
+      // Buscar en qué trámites aparece este requisito
+      TRAMITES.forEach(tramite => {
+        if (tramite.requisitos.includes(row.requisito)) {
+          conteo[`${tramite.id}-${row.requisito}`] = parseInt(row.cantidad);
+        }
+      });
     });
 
     res.json(conteo);
@@ -968,7 +976,7 @@ app.get('/api/proyectos/:proyectoId/archivos-conteo', verificarToken, async (req
   }
 });
 
-// Subir archivo
+// Subir archivo (COMPARTIDO - se guarda con tramite_id=0 para que sea accesible desde cualquier trámite)
 app.post('/api/proyectos/:proyectoId/archivos', verificarToken, async (req, res) => {
   const { proyectoId } = req.params;
   const { tramiteId, requisito, nombreArchivo, tipoArchivo, contenido } = req.body;
@@ -989,13 +997,15 @@ app.post('/api/proyectos/:proyectoId/archivos', verificarToken, async (req, res)
       return res.status(400).json({ error: 'Archivo demasiado grande. Máximo 100MB.' });
     }
 
+    // Guardar con tramite_id = 0 para indicar que es compartido
     const result = await client.query(
       `INSERT INTO archivos (proyecto_id, tramite_id, requisito, nombre_archivo, tipo_archivo, tamanio, contenido, subido_por)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [proyectoId, tramiteId, requisito, nombreArchivo, tipoArchivo, contenido.length, contenido, req.user.id]
+      [proyectoId, 0, requisito, nombreArchivo, tipoArchivo, contenido.length, contenido, req.user.id]
     );
 
-    io.emit('archivo_subido', { proyectoId, tramiteId, requisito });
+    // Emitir evento para todos los trámites que tengan este requisito
+    io.emit('archivo_subido', { proyectoId, requisito });
     res.json({ success: true, id: result.rows[0].id });
   } catch (error) {
     console.error('Error al subir archivo:', error);
@@ -1046,13 +1056,14 @@ app.get('/api/proyectos/:proyectoId/archivos/:tramiteId/:requisito', verificarTo
       return res.status(403).json([]);
     }
 
+    // Buscar archivos solo por proyecto_id y requisito (ignorar tramite_id para compartir)
     const result = await client.query(
       `SELECT a.id, a.nombre_archivo, a.tipo_archivo, a.tamanio, a.fecha_subida, u.nombre as subido_por_nombre
        FROM archivos a
        LEFT JOIN usuarios u ON a.subido_por = u.id
-       WHERE a.proyecto_id = $1 AND a.tramite_id = $2 AND a.requisito = $3
+       WHERE a.proyecto_id = $1 AND a.requisito = $2
        ORDER BY a.fecha_subida DESC`,
-      [proyectoId, tramiteId, requisito]
+      [proyectoId, requisito]
     );
 
     res.json(result.rows);
